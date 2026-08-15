@@ -1,0 +1,29 @@
+# Oathbound configuration
+
+persistence:
+  # Path to the SQLite database file, relative to the plugin's data folder.
+  sqlite-file: oathbound.db
+
+ownership:
+  # Max hops to walk when resolving a ProtectionGroup's owner chain before
+  # failing safe and flagging the chain as unresolved.
+  resolver-depth-cutoff: 10
+
+economy:
+  # Named currencies available on this server. The first entry is the default.
+  currencies:
+    - coin
+
+altar:
+  # Block required directly on top of the barrel, with a candle placed on top of that, to
+  # consecrate an altar. Placing the candle is what triggers altar creation.
+  capstone-material: OBSIDIAN
+  # Radius (in blocks) = power-radius-scale * tier-multiplier * sqrt(current Power). Placeholder
+  # curve - real tuning happens once the sacrifice/decay system is built.
+  power-radius-scale: 4.0
+  tier-radius-multiplier:
+    INDIVIDUAL: 1.0
+    COMPANY: 1.25
+    TOWN: 1.5
+    REGION: 2.0
+    KINGDOM: 3.0

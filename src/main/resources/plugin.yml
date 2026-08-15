@@ -1,0 +1,13 @@
+name: Oathbound
+version: '${version}'
+main: com.google.gmail.philbgarner.oathbound.OathboundPlugin
+api-version: '26.2'
+author: philbgarner
+description: Diegetic, mechanically-binding agreements between players.
+commands:
+  oathbound-debug:
+    description: Oathbound Phase 1 debug/testing commands.
+    usage: /<command> <subcommand> [args...]
+  oathbound-trade:
+    description: Open the Oathbound trade contract builder or board.
+    usage: /<command> [board]
