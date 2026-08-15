@@ -12,5 +12,5 @@ commands:
     description: Open the Oathbound trade contract builder or board.
     usage: /<command> [board]
   oathbound-oath:
-    description: Build and propose a named-party oath, or review oaths proposed to you.
-    usage: /<command> <create <playerName> [blood]|pending>
+    description: Build and propose a named-party oath, review oaths proposed to you, or claim escrow.
+    usage: /<command> <create <playerName> [blood]|pending|claim>

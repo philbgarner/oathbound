@@ -72,6 +72,12 @@ public final class OathService {
         oath.addClause(clause);
     }
 
+    /** Records that a clause's condition has been met and its effect executed - see {@link ConditionEngine}. */
+    public void markClauseFulfilled(Oath oath, int clauseIndex) {
+        requireState(oath, OathState.ACTIVE);
+        oath.markClauseFulfilled(clauseIndex);
+    }
+
     public void addWitness(Oath oath, PlayerRef witness) {
         requireState(oath, OathState.DRAFT);
         oath.addWitness(witness);
@@ -116,6 +122,9 @@ public final class OathService {
         Instant now = Instant.now();
         if (target == OathState.SEALED) {
             oath.setSealedAt(now);
+        }
+        if (target == OathState.ACTIVE) {
+            oath.setActivatedAt(now);
         }
         if (target == OathState.FULFILLED || target == OathState.BROKEN || target == OathState.VOIDED) {
             oath.setResolvedAt(now);

@@ -4,6 +4,8 @@ import com.google.gmail.philbgarner.oathbound.altar.Altar;
 import com.google.gmail.philbgarner.oathbound.contract.TradeOffer;
 import com.google.gmail.philbgarner.oathbound.economy.PlayerBalance;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
+import com.google.gmail.philbgarner.oathbound.oath.DeathRecord;
+import com.google.gmail.philbgarner.oathbound.oath.EscrowClaim;
 import com.google.gmail.philbgarner.oathbound.oath.LedgerEntry;
 import com.google.gmail.philbgarner.oathbound.oath.Oath;
 
@@ -61,4 +63,12 @@ public interface DataStore {
     List<TradeOffer> loadAllTradeOffers() throws DataStoreException;
 
     void deleteTradeOffer(UUID oathId) throws DataStoreException;
+
+    void appendDeathRecord(DeathRecord record) throws DataStoreException;
+
+    List<DeathRecord> loadAllDeathRecords() throws DataStoreException;
+
+    void saveEscrowClaim(EscrowClaim claim) throws DataStoreException;
+
+    List<EscrowClaim> loadAllEscrowClaims() throws DataStoreException;
 }

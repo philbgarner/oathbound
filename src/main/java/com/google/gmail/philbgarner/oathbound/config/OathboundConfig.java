@@ -7,6 +7,7 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -32,16 +33,18 @@ public final class OathboundConfig {
     private final Material altarCapstoneMaterial;
     private final double altarPowerRadiusScale;
     private final Map<GroupTier, Double> altarTierRadiusMultipliers;
+    private final Duration escrowClaimExpiry;
 
     private OathboundConfig(Path sqliteFile, int resolverDepthCutoff, List<Currency> currencies,
                              Material altarCapstoneMaterial, double altarPowerRadiusScale,
-                             Map<GroupTier, Double> altarTierRadiusMultipliers) {
+                             Map<GroupTier, Double> altarTierRadiusMultipliers, Duration escrowClaimExpiry) {
         this.sqliteFile = sqliteFile;
         this.resolverDepthCutoff = resolverDepthCutoff;
         this.currencies = currencies;
         this.altarCapstoneMaterial = altarCapstoneMaterial;
         this.altarPowerRadiusScale = altarPowerRadiusScale;
         this.altarTierRadiusMultipliers = altarTierRadiusMultipliers;
+        this.escrowClaimExpiry = escrowClaimExpiry;
     }
 
     public static OathboundConfig load(FileConfiguration config, Path dataFolder) {
@@ -72,8 +75,11 @@ public final class OathboundConfig {
             }
         }
 
+        int escrowClaimExpiryDays = config.getInt("escrow.claim-expiry-days", 30);
+        Duration escrowClaimExpiry = Duration.ofDays(escrowClaimExpiryDays);
+
         return new OathboundConfig(dataFolder.resolve(sqliteFileName), depthCutoff, currencies,
-                capstoneMaterial, powerRadiusScale, Map.copyOf(tierMultipliers));
+                capstoneMaterial, powerRadiusScale, Map.copyOf(tierMultipliers), escrowClaimExpiry);
     }
 
     public Path sqliteFile() {
@@ -98,5 +104,9 @@ public final class OathboundConfig {
 
     public Map<GroupTier, Double> altarTierRadiusMultipliers() {
         return altarTierRadiusMultipliers;
+    }
+
+    public Duration escrowClaimExpiry() {
+        return escrowClaimExpiry;
     }
 }

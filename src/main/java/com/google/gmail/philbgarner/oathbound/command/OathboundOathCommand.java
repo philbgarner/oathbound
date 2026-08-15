@@ -2,6 +2,7 @@ package com.google.gmail.philbgarner.oathbound.command;
 
 import com.google.gmail.philbgarner.oathbound.OathboundPlugin;
 import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
+import com.google.gmail.philbgarner.oathbound.gui.EscrowClaimBoardGui;
 import com.google.gmail.philbgarner.oathbound.gui.OathBuilderGui;
 import com.google.gmail.philbgarner.oathbound.gui.PendingOathBoardGui;
 import com.google.gmail.philbgarner.oathbound.oath.Oath;
@@ -21,7 +22,7 @@ import java.util.stream.Collectors;
  * draft against a named counterparty, 'pending' reviews oaths proposed to you. */
 public final class OathboundOathCommand implements CommandExecutor, TabCompleter {
 
-    private static final List<String> SUBCOMMANDS = List.of("create", "pending");
+    private static final List<String> SUBCOMMANDS = List.of("create", "pending", "claim");
 
     private final OathboundPlugin plugin;
 
@@ -36,13 +37,14 @@ public final class OathboundOathCommand implements CommandExecutor, TabCompleter
             return true;
         }
         if (args.length == 0) {
-            sender.sendMessage("Usage: /" + label + " <create <playerName> [blood]|pending>");
+            sender.sendMessage("Usage: /" + label + " <create <playerName> [blood]|pending|claim>");
             return true;
         }
         switch (args[0].toLowerCase()) {
             case "create" -> create(player, args);
             case "pending" -> PendingOathBoardGui.open(plugin, player);
-            default -> player.sendMessage("Usage: /" + label + " <create <playerName> [blood]|pending>");
+            case "claim" -> EscrowClaimBoardGui.open(plugin, player);
+            default -> player.sendMessage("Usage: /" + label + " <create <playerName> [blood]|pending|claim>");
         }
         return true;
     }

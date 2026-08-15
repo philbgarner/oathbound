@@ -39,10 +39,27 @@ final class OathServiceTest {
 
         service.activate(oath, bob);
         assertEquals(OathState.ACTIVE, oath.state());
+        assertTrue(oath.activatedAt() != null);
 
         service.fulfill(oath, alice);
         assertEquals(OathState.FULFILLED, oath.state());
         assertTrue(oath.resolvedAt() != null);
+    }
+
+    @Test
+    void markClauseFulfilledRequiresActiveStateAndAValidIndex() {
+        Oath oath = service.createDraft(List.of(alice, bob), false);
+        service.addClause(oath, new Clause.CustomFlagClause("do the thing"));
+        assertThrows(OathTransitionException.class, () -> service.markClauseFulfilled(oath, 0));
+
+        service.propose(oath, alice);
+        service.seal(oath, bob);
+        service.activate(oath, bob);
+
+        assertThrows(IndexOutOfBoundsException.class, () -> service.markClauseFulfilled(oath, 1));
+
+        service.markClauseFulfilled(oath, 0);
+        assertTrue(oath.isClauseFulfilled(0));
     }
 
     @Test

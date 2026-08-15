@@ -4,8 +4,10 @@ import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -20,8 +22,10 @@ public final class Oath {
     private final boolean bloodOath;
     private final boolean open;
     private final Instant createdAt;
+    private final Set<Integer> fulfilledClauseIndices = new HashSet<>();
     private OathState state = OathState.DRAFT;
     private Instant sealedAt;
+    private Instant activatedAt;
     private Instant resolvedAt;
     private UUID negotiationRef;
 
@@ -45,14 +49,17 @@ public final class Oath {
     /** Rehydrates a persisted Oath, bypassing the DRAFT-only construction path used for new oaths. */
     public static Oath reconstruct(UUID id, List<PlayerRef> parties, List<PlayerRef> witnesses, List<Clause> clauses,
                                     OathState state, boolean bloodOath, boolean open, Instant createdAt,
-                                    Instant sealedAt, Instant resolvedAt, UUID negotiationRef) {
+                                    Instant sealedAt, Instant activatedAt, Instant resolvedAt, UUID negotiationRef,
+                                    Set<Integer> fulfilledClauseIndices) {
         Oath oath = new Oath(id, parties, bloodOath, open, createdAt);
         oath.witnesses.addAll(witnesses);
         oath.clauses.addAll(clauses);
         oath.state = state;
         oath.sealedAt = sealedAt;
+        oath.activatedAt = activatedAt;
         oath.resolvedAt = resolvedAt;
         oath.negotiationRef = negotiationRef;
+        oath.fulfilledClauseIndices.addAll(fulfilledClauseIndices);
         return oath;
     }
 
@@ -92,12 +99,24 @@ public final class Oath {
         return sealedAt;
     }
 
+    public Instant activatedAt() {
+        return activatedAt;
+    }
+
     public Instant resolvedAt() {
         return resolvedAt;
     }
 
     public UUID negotiationRef() {
         return negotiationRef;
+    }
+
+    public Set<Integer> fulfilledClauseIndices() {
+        return Set.copyOf(fulfilledClauseIndices);
+    }
+
+    public boolean isClauseFulfilled(int clauseIndex) {
+        return fulfilledClauseIndices.contains(clauseIndex);
     }
 
     void addClause(Clause clause) {
@@ -120,11 +139,22 @@ public final class Oath {
         this.sealedAt = sealedAt;
     }
 
+    void setActivatedAt(Instant activatedAt) {
+        this.activatedAt = activatedAt;
+    }
+
     void setResolvedAt(Instant resolvedAt) {
         this.resolvedAt = resolvedAt;
     }
 
     void setNegotiationRef(UUID negotiationRef) {
         this.negotiationRef = negotiationRef;
+    }
+
+    void markClauseFulfilled(int clauseIndex) {
+        if (clauseIndex < 0 || clauseIndex >= clauses.size()) {
+            throw new IndexOutOfBoundsException("No clause at index " + clauseIndex + " on oath " + id);
+        }
+        fulfilledClauseIndices.add(clauseIndex);
     }
 }

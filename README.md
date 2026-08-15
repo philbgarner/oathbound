@@ -54,8 +54,16 @@ to stand up.
   first player to accept becomes the oath's second party and the swap happens automatically, with
   delivery held safely if either side is offline at the moment of completion.
 - **Chest-GUI named-party oath builder** — draft an oath against a specific counterparty and attach
-  transfer, custom-flag, and kill-count clauses to it through an in-world chest interface, then propose
-  it. The named counterparty reviews and signs (or declines) it from their own pending-oaths board.
+  transfer, custom-flag, kill-count, and escrow clauses to it through an in-world chest interface, then
+  propose it. The named counterparty reviews and signs (or declines) it from their own pending-oaths
+  board.
+- **Live condition-engine wiring** — a periodic engine watches every active oath and executes a
+  transfer or escrow clause's effect the moment its condition is actually met (death counts, elapsed
+  time, manual confirmation, or currency already escrowed), rather than just being able to evaluate
+  whether it *would* be met.
+- **Virtualized Escrow** — items and currency staked as part of an oath are withdrawn from the depositor
+  immediately; currency pays straight into the recipient's balance on release, items go into a claimable
+  pool with a configurable expiry that returns them to the depositor if nobody claims them.
 - **Everything persists** — SQLite-backed via a pluggable storage adapter, with an in-memory cache for
   fast permission checks and async writes so gameplay never blocks on disk I/O.
 
@@ -93,26 +101,42 @@ vice versa. If either side is offline the instant the swap happens, their items 
 also cancel their own unclaimed listing from the board to get their items back.
 
 This is deliberately a narrow, self-contained feature rather than the general-purpose Escrow system
-described in the master plan (§4) — it doesn't use the generic `EscrowClause`/release-schedule model,
-and there's no claim/expiry/abandonment handling. Real Escrow is still on the [Roadmap](#roadmap).
+described in the master plan (§4) — it doesn't use the generic `EscrowClause`/release-schedule model
+(that's built now, see below, but the trade board still doesn't use it - it's a simpler direct swap).
 
 ### Named-party oaths (the general-purpose builder)
 
 `/oathbound-oath create <player>` drafts a two-party oath against a named counterparty and opens a chest
 GUI for building it up: click a button to add a **transfer** clause (reassigns one of your
 `ProtectionGroup`s' ownership), a **custom flag** (free-text roleplay clause with no mechanical effect),
-or a **kill count** (a target player and a required kill tally). Since chest GUIs have no text field,
-any free text or numbers the clause needs (flag wording, a target's name, a quantity) are collected by
-closing the GUI and typing the answer in chat, which the plugin intercepts. Once at least one clause is
-attached, **Propose** sends the draft to the named counterparty; they review it and sign or decline it
-from their own `/oathbound-oath pending` board. Signing carries the oath straight through `SEALED` into
-`ACTIVE`, same as accepting an open contract does.
+a **kill count** (a target player and a required kill tally - not executed yet, see the Roadmap), or an
+**escrow** clause (deposit items and/or currency, released to the counterparty once the oath is signed).
+Since chest GUIs have no text field, any free text or numbers a clause needs (flag wording, a target's
+name, a quantity, a currency amount) are collected by closing the GUI and typing the answer in chat,
+which the plugin intercepts. Once at least one clause is attached, **Propose** sends the draft to the
+named counterparty; they review it and sign or decline it from their own `/oathbound-oath pending` board.
+Signing carries the oath straight through `SEALED` into `ACTIVE`, same as accepting an open contract does.
 
-Every clause added this way is gated by an `Immediate` condition — full condition-engine wiring (so a
-clause can gate on time elapsed, a death count, a payment, etc.) is still on the [Roadmap](#roadmap), as
-is actually executing a clause's effect (the transfer clause doesn't move ownership yet; the kill-count
-clause doesn't track kills yet). This feature is about building and proposing/signing the oath, not
-fulfilling it.
+Every clause added this way is gated by an `Immediate` condition (the builder doesn't expose a condition
+picker yet), but once the oath is `ACTIVE` a periodic condition engine actually executes it: transfer
+clauses reassign ownership, and escrow clauses pay their currency straight into the recipient's balance
+and drop any items into a claimable pool (`/oathbound-oath claim`). Kill-count clauses still have no
+execution behind them - see the [Roadmap](#roadmap).
+
+### Escrow
+
+`EscrowClause` deposits are withdrawn from the depositor (items pulled from their inventory, currency
+from their balance) the moment the clause is added to a draft, and refunded if the draft is cancelled
+before being proposed. Once the oath is signed and its release condition is met, currency pays straight
+into the recipient's balance - no claim needed, a balance isn't a delivery problem. Items are different:
+they need a real inventory to land in, so they become an unclaimed batch instead of being pushed
+anywhere. `/oathbound-oath claim` lists everything you can currently claim (normally as the clause's
+recipient), and you get a login nudge if something's waiting. A release schedule with multiple steps
+fires atomically - everything releases once every step's condition is true at once, not incrementally.
+If a released item batch goes unclaimed for `escrow.claim-expiry-days` (30 by default), it flips back to
+being claimable by the original depositor instead. Escheat-to-Notary and breach-split abandonment
+policies from the master plan aren't implemented, since neither a Notary nor a breach-split system exists
+yet - "return to depositor" is the only policy for now.
 
 ### ProtectionGroups
 
@@ -140,7 +164,8 @@ yet.
 
 ### Persistence
 
-All state — oaths, groups, ledger entries, balances, altars, trade offers — is stored via a
+All state — oaths, groups, ledger entries, balances, altars, trade offers, death records, escrow claims —
+is stored via a
 `DataStore` adapter interface. The only implementation today is SQLite (embedded, file-based, bundled
 inside the plugin jar — there is nothing separate to install or run). The interface is adapter-based
 specifically so a flat-file/YAML backend can be added later without touching any calling code.
@@ -161,6 +186,7 @@ specifically so a flat-file/YAML backend can be added later without touching any
 ```
 /oathbound-oath create <playerName> [blood]   # draft a named-party oath, then build it up in the chest GUI
 /oathbound-oath pending                       # review oaths proposed to you; click one to sign or decline it
+/oathbound-oath claim                         # list escrow item batches you can currently claim
 ```
 
 ### Debug commands
@@ -176,6 +202,7 @@ debug command surface lets you exercise it directly. Commands require a player, 
 
 /oathbound-debug oath create <otherPlayerName> [blood]
 /oathbound-debug oath addflag <oathId> <text...>
+/oathbound-debug oath confirm <oathId>
 /oathbound-debug oath propose <oathId>
 /oathbound-debug oath seal <oathId>
 /oathbound-debug oath activate <oathId>
@@ -281,6 +308,11 @@ economy:
   currencies:
     - coin
 
+escrow:
+  # Days an escrow release sits unclaimed before it's returned to the depositor instead of the
+  # recipient. Currency releases are unaffected - only unclaimed items expire.
+  claim-expiry-days: 30
+
 altar:
   # Block required directly on top of the barrel, with a candle placed on top of that, to
   # consecrate an altar. Placing the candle is what triggers altar creation.
@@ -309,22 +341,36 @@ Tracking against the [master design plan](./oathbound-master-plan.md)'s build or
 - [x] Core Oath data model, lifecycle state machine, and Ledger
 - [x] Native currency + ranked `ProtectionGroup` (player-or-group owner, cycle-safe live resolver)
 - [x] Condition engine primitives (manual-confirm, time-elapsed, death-count, payment-received,
-      vote-tally, and `AND`/`OR`/`NOT` composition) — evaluation logic exists; nothing drives it off
-      real game events yet
+      vote-tally, and `AND`/`OR`/`NOT` composition) and evaluation logic
 - [x] SQLite-backed persistence adapter with async writes and an in-memory cache
 - [x] Altar structure detection (barrel + capstone + candle) and altar creation at zero Power, with a
       tier-scaled, Power-based radius formula
 - [x] Chest-GUI contract builder — open (no-named-counterparty) oaths, and an item-for-item trade
       contract built on top of them (post via GUI, browse a board, fulfill, auto-swap).
-- [x] General-purpose chest-GUI builder for named-party oaths — attach transfer, custom-flag, and
-      kill-count clauses, propose to a named counterparty, and sign/decline from a pending-oaths board.
-      Every clause is `Immediate`-gated for now; clause effects (transfers, kill tracking) aren't
-      executed yet, and escrow clauses aren't exposed in this builder.
+- [x] General-purpose chest-GUI builder for named-party oaths — attach transfer, custom-flag,
+      kill-count, and escrow clauses, propose to a named counterparty, and sign/decline from a
+      pending-oaths board.
+- [x] Condition-engine wiring for transfer and escrow clauses — a periodic engine evaluates every
+      `ACTIVE` oath's clauses against real backends (a persisted, timestamped death log feeding
+      `DeathCount`, wall-clock time for `TimeElapsed`, a manual-confirm store, `Immediate`, and
+      `AND`/`OR`/`NOT` composition) and executes the effect the moment a condition is met — ownership
+      reassignment for `TransferClause`, currency-to-balance and item-to-claim for `EscrowClause` — then
+      auto-carries the oath to `FULFILLED` once every clause it contains has resolved this way.
+      A release schedule with several steps fires atomically (everything releases once every step's
+      condition holds at once), not incrementally per step. `VoteTally` is still an honest no-op stub
+      (needs Election Oaths, still below), and `KillCountClause` is left untouched by this engine — an
+      oath containing one is deliberately never auto-fulfilled.
+- [x] Virtualized Escrow — items/currency deposited into an escrow clause are withdrawn from the
+      depositor immediately; currency releases straight to the recipient's balance, items go into a
+      claimable pool (`/oathbound-oath claim`, plus a login nudge) since delivery needs a real inventory.
+      Unclaimed items past a configurable expiry (`escrow.claim-expiry-days`, default 30) flip back to
+      claimable by the depositor instead. `PaymentReceived` now reports how much of a currency an oath's
+      own escrow clauses hold, so a same-oath `TransferClause` can gate on it. Escheat-to-Notary and
+      breach-split abandonment policies aren't implemented (no Notary or breach-split system exists yet)
+      — "return to depositor" is the only policy for now.
 
 ### Not yet built
 
-- [ ] Full condition-engine wiring (clauses don't yet auto-resolve when their conditions are met)
-- [ ] Virtualized Escrow — claim/expiry/abandonment handling
 - [ ] Chest/door/claim access gating tied to `ProtectionGroup`
 - [ ] Honor/reputation system + Blood Oath tier
 - [ ] NPC Notary (rooted villager) + Sealing Table, and the async offer/counter-offer negotiation
@@ -332,9 +378,9 @@ Tracking against the [master design plan](./oathbound-master-plan.md)'s build or
 - [ ] Public Oath Board (regional + capital)
 - [ ] Altar sacrifice ritual (Power accrual), decay, vulnerability tiers, desecration outcomes,
       reconsecration cooldown, and claim nesting/overlap resolution
-- [ ] Election Oaths
+- [ ] Election Oaths — also where `VoteTally` gets wired up to a real ballot backend
 - [ ] Bounty / Kill Contracts — quantity/group targeting, head-return fulfillment, heat-scaling fees,
-      banishment
+      banishment, and the condition-engine hookup for `KillCountClause` itself
 - [ ] Polish pass: particle/sound effects, Notary flavor/skin system, full config-surface tuning
 
 ### Deliberately deferred (see master plan)

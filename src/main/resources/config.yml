@@ -14,6 +14,11 @@ economy:
   currencies:
     - coin
 
+escrow:
+  # Days an escrow release sits unclaimed before it's returned to the depositor instead of the
+  # recipient. Currency releases are unaffected - only unclaimed items expire.
+  claim-expiry-days: 30
+
 altar:
   # Block required directly on top of the barrel, with a candle placed on top of that, to
   # consecrate an altar. Placing the candle is what triggers altar creation.

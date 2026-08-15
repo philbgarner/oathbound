@@ -15,6 +15,8 @@ import com.google.gmail.philbgarner.oathbound.group.ProtectionGroupRef;
 import com.google.gmail.philbgarner.oathbound.group.Role;
 import com.google.gmail.philbgarner.oathbound.oath.Clause;
 import com.google.gmail.philbgarner.oathbound.oath.Condition;
+import com.google.gmail.philbgarner.oathbound.oath.DeathRecord;
+import com.google.gmail.philbgarner.oathbound.oath.EscrowClaim;
 import com.google.gmail.philbgarner.oathbound.oath.Ledger;
 import com.google.gmail.philbgarner.oathbound.oath.LedgerEntry;
 import com.google.gmail.philbgarner.oathbound.oath.Oath;
@@ -27,9 +29,11 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -122,6 +126,71 @@ final class SqliteDataStoreTest {
     }
 
     @Test
+    void activatedOathRoundTripsActivatedAtAndFulfilledClauseIndices(@TempDir Path tempDir) throws DataStoreException {
+        Path dbFile = tempDir.resolve("oathbound.db");
+        PlayerRef alice = new PlayerRef(UUID.randomUUID());
+        PlayerRef bob = new PlayerRef(UUID.randomUUID());
+        UUID oathId;
+
+        SqliteDataStore first = new SqliteDataStore(dbFile);
+        first.initialize();
+        try {
+            OathService oathService = new OathService(new Ledger());
+            Oath oath = oathService.createDraft(List.of(alice, bob), false);
+            oathId = oath.id();
+            oathService.addClause(oath, new Clause.CustomFlagClause("keep the peace"));
+            oathService.propose(oath, alice);
+            oathService.seal(oath, bob);
+            oathService.activate(oath, bob);
+            oathService.markClauseFulfilled(oath, 0);
+            first.saveOath(oath);
+        } finally {
+            first.close();
+        }
+
+        SqliteDataStore second = new SqliteDataStore(dbFile);
+        second.initialize();
+        try {
+            Optional<Oath> loaded = second.loadOath(oathId);
+            assertTrue(loaded.isPresent());
+            assertEquals(OathState.ACTIVE, loaded.get().state());
+            assertTrue(loaded.get().activatedAt() != null);
+            assertEquals(Set.of(0), loaded.get().fulfilledClauseIndices());
+            assertTrue(loaded.get().isClauseFulfilled(0));
+        } finally {
+            second.close();
+        }
+    }
+
+    @Test
+    void deathRecordsRoundTripAcrossAReopenedConnection(@TempDir Path tempDir) throws DataStoreException {
+        Path dbFile = tempDir.resolve("oathbound.db");
+        PlayerRef victim = new PlayerRef(UUID.randomUUID());
+        Instant timestamp = Instant.now();
+        UUID recordId = UUID.randomUUID();
+
+        SqliteDataStore first = new SqliteDataStore(dbFile);
+        first.initialize();
+        try {
+            first.appendDeathRecord(new DeathRecord(recordId, victim, timestamp));
+        } finally {
+            first.close();
+        }
+
+        SqliteDataStore second = new SqliteDataStore(dbFile);
+        second.initialize();
+        try {
+            List<DeathRecord> records = second.loadAllDeathRecords();
+            assertEquals(1, records.size());
+            assertEquals(recordId, records.get(0).id());
+            assertEquals(victim, records.get(0).player());
+            assertEquals(timestamp, records.get(0).timestamp());
+        } finally {
+            second.close();
+        }
+    }
+
+    @Test
     void altarRoundTripsAcrossAReopenedConnection(@TempDir Path tempDir) throws DataStoreException {
         Path dbFile = tempDir.resolve("oathbound.db");
         PlayerRef owner = new PlayerRef(UUID.randomUUID());
@@ -190,6 +259,52 @@ final class SqliteDataStoreTest {
             assertEquals(1, second.loadAllTradeOffers().size());
         } finally {
             second.close();
+        }
+    }
+
+    @Test
+    void escrowClaimRoundTripsAndUpdatesAcrossReopenedConnections(@TempDir Path tempDir) throws DataStoreException {
+        Path dbFile = tempDir.resolve("oathbound.db");
+        PlayerRef depositor = new PlayerRef(UUID.randomUUID());
+        PlayerRef recipient = new PlayerRef(UUID.randomUUID());
+        UUID oathId = UUID.randomUUID();
+        EscrowClaim claim = new EscrowClaim(UUID.randomUUID(), oathId, 0, depositor, recipient,
+                List.of(new SerializedItemStack(new byte[] {9, 9})), Instant.now());
+
+        SqliteDataStore first = new SqliteDataStore(dbFile);
+        first.initialize();
+        try {
+            first.saveEscrowClaim(claim);
+        } finally {
+            first.close();
+        }
+
+        SqliteDataStore second = new SqliteDataStore(dbFile);
+        second.initialize();
+        try {
+            List<EscrowClaim> claims = second.loadAllEscrowClaims();
+            assertEquals(1, claims.size());
+            EscrowClaim loaded = claims.get(0);
+            assertEquals(claim.id(), loaded.id());
+            assertEquals(oathId, loaded.oathId());
+            assertEquals(depositor, loaded.depositor());
+            assertEquals(recipient, loaded.recipient());
+            assertTrue(!loaded.claimed());
+
+            loaded.claim();
+            second.saveEscrowClaim(loaded);
+        } finally {
+            second.close();
+        }
+
+        SqliteDataStore third = new SqliteDataStore(dbFile);
+        third.initialize();
+        try {
+            List<EscrowClaim> claims = third.loadAllEscrowClaims();
+            assertEquals(1, claims.size());
+            assertTrue(claims.get(0).claimed());
+        } finally {
+            third.close();
         }
     }
 }

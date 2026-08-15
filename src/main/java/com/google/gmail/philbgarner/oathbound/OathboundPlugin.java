@@ -14,7 +14,13 @@ import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
 import com.google.gmail.philbgarner.oathbound.gui.OathBuilderListener;
 import com.google.gmail.philbgarner.oathbound.gui.TradeGuiListener;
 import com.google.gmail.philbgarner.oathbound.listener.AltarConsecrationListener;
+import com.google.gmail.philbgarner.oathbound.listener.DeathTrackingListener;
+import com.google.gmail.philbgarner.oathbound.oath.ConditionEngine;
+import com.google.gmail.philbgarner.oathbound.oath.DeathTracker;
+import com.google.gmail.philbgarner.oathbound.oath.EscrowClaim;
+import com.google.gmail.philbgarner.oathbound.oath.EscrowExpiryService;
 import com.google.gmail.philbgarner.oathbound.oath.Ledger;
+import com.google.gmail.philbgarner.oathbound.oath.ManualConfirmStore;
 import com.google.gmail.philbgarner.oathbound.oath.Oath;
 import com.google.gmail.philbgarner.oathbound.oath.OathService;
 import com.google.gmail.philbgarner.oathbound.persistence.DataStore;
@@ -23,6 +29,8 @@ import com.google.gmail.philbgarner.oathbound.persistence.sqlite.SqliteDataStore
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -43,11 +51,16 @@ public final class OathboundPlugin extends JavaPlugin {
     private EconomyService economyService;
     private OwnershipResolver ownershipResolver;
     private AltarRadiusCalculator altarRadiusCalculator;
+    private DeathTracker deathTracker;
+    private ManualConfirmStore manualConfirmStore;
+    private ConditionEngine conditionEngine;
+    private EscrowExpiryService escrowExpiryService;
 
     private final Map<UUID, ProtectionGroup> groupCache = new ConcurrentHashMap<>();
     private final Map<UUID, Oath> oathCache = new ConcurrentHashMap<>();
     private final Map<UUID, Altar> altarCache = new ConcurrentHashMap<>();
     private final Map<UUID, TradeOffer> tradeOfferCache = new ConcurrentHashMap<>();
+    private final Map<UUID, EscrowClaim> escrowClaimCache = new ConcurrentHashMap<>();
 
     @Override
     public void onEnable() {
@@ -78,12 +91,25 @@ public final class OathboundPlugin extends JavaPlugin {
             }
         }));
 
+        deathTracker = new DeathTracker();
+        deathTracker.addListener(record -> persistenceExecutor.submit(() -> {
+            try {
+                dataStore.appendDeathRecord(record);
+            } catch (DataStoreException e) {
+                getLogger().log(Level.SEVERE, "Failed to persist death record " + record.id(), e);
+            }
+        }));
+        manualConfirmStore = new ManualConfirmStore();
+
         oathService = new OathService(ledger);
         economyService = new EconomyService(oathboundConfig.currencies());
         ownershipResolver = new OwnershipResolver(
                 id -> Optional.ofNullable(groupCache.get(id)), oathboundConfig.resolverDepthCutoff());
         altarRadiusCalculator = new AltarRadiusCalculator(
                 oathboundConfig.altarPowerRadiusScale(), oathboundConfig.altarTierRadiusMultipliers());
+        conditionEngine = new ConditionEngine(oathService, ownershipResolver, economyService,
+                id -> Optional.ofNullable(groupCache.get(id)), deathTracker, manualConfirmStore);
+        escrowExpiryService = new EscrowExpiryService();
 
         loadExistingState();
 
@@ -111,8 +137,32 @@ public final class OathboundPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new AltarConsecrationListener(this), this);
         getServer().getPluginManager().registerEvents(new TradeGuiListener(this), this);
         getServer().getPluginManager().registerEvents(new OathBuilderListener(this), this);
+        getServer().getPluginManager().registerEvents(new DeathTrackingListener(this), this);
+
+        getServer().getScheduler().runTaskTimer(this, this::runConditionEngineTick, 100L, 100L);
 
         getLogger().info("Oathbound enabled.");
+    }
+
+    private void runConditionEngineTick() {
+        Instant now = Instant.now();
+        try {
+            ConditionEngine.TickResult result = conditionEngine.tick(oathCache.values(), now);
+            result.changedOaths().forEach(this::persistOathAsync);
+            for (EscrowClaim claim : result.newClaims()) {
+                escrowClaimCache.put(claim.id(), claim);
+                persistEscrowClaimAsync(claim);
+            }
+        } catch (RuntimeException e) {
+            getLogger().log(Level.SEVERE, "Condition engine tick failed", e);
+        }
+        try {
+            List<EscrowClaim> expired = escrowExpiryService.sweep(
+                    escrowClaimCache.values(), now, oathboundConfig.escrowClaimExpiry());
+            expired.forEach(this::persistEscrowClaimAsync);
+        } catch (RuntimeException e) {
+            getLogger().log(Level.SEVERE, "Escrow expiry sweep failed", e);
+        }
     }
 
     @Override
@@ -153,8 +203,17 @@ public final class OathboundPlugin extends JavaPlugin {
             for (TradeOffer offer : dataStore.loadAllTradeOffers()) {
                 tradeOfferCache.put(offer.oathId(), offer);
             }
+            int deathRecordCount = 0;
+            for (var record : dataStore.loadAllDeathRecords()) {
+                deathTracker.loadExisting(record);
+                deathRecordCount++;
+            }
+            for (EscrowClaim claim : dataStore.loadAllEscrowClaims()) {
+                escrowClaimCache.put(claim.id(), claim);
+            }
             getLogger().info("Loaded " + groupCache.size() + " group(s), " + oathCache.size() + " oath(s), "
-                    + altarCache.size() + " altar(s), " + tradeOfferCache.size() + " trade offer(s) from storage.");
+                    + altarCache.size() + " altar(s), " + tradeOfferCache.size() + " trade offer(s), "
+                    + deathRecordCount + " death record(s), " + escrowClaimCache.size() + " escrow claim(s) from storage.");
         } catch (DataStoreException e) {
             getLogger().log(Level.SEVERE, "Failed to load persisted state", e);
         }
@@ -210,6 +269,16 @@ public final class OathboundPlugin extends JavaPlugin {
         });
     }
 
+    public void persistEscrowClaimAsync(EscrowClaim claim) {
+        persistenceExecutor.submit(() -> {
+            try {
+                dataStore.saveEscrowClaim(claim);
+            } catch (DataStoreException e) {
+                getLogger().log(Level.SEVERE, "Failed to persist escrow claim " + claim.id(), e);
+            }
+        });
+    }
+
     public OathboundConfig oathboundConfig() {
         return oathboundConfig;
     }
@@ -234,6 +303,14 @@ public final class OathboundPlugin extends JavaPlugin {
         return ledger;
     }
 
+    public DeathTracker deathTracker() {
+        return deathTracker;
+    }
+
+    public ManualConfirmStore manualConfirmStore() {
+        return manualConfirmStore;
+    }
+
     public Map<UUID, ProtectionGroup> groupCache() {
         return groupCache;
     }
@@ -248,5 +325,9 @@ public final class OathboundPlugin extends JavaPlugin {
 
     public Map<UUID, TradeOffer> tradeOfferCache() {
         return tradeOfferCache;
+    }
+
+    public Map<UUID, EscrowClaim> escrowClaimCache() {
+        return escrowClaimCache;
     }
 }

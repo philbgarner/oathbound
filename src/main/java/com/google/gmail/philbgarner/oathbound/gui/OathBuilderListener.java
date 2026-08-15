@@ -1,35 +1,49 @@
 package com.google.gmail.philbgarner.oathbound.gui;
 
 import com.google.gmail.philbgarner.oathbound.OathboundPlugin;
+import com.google.gmail.philbgarner.oathbound.bukkit.ItemStackSerialization;
+import com.google.gmail.philbgarner.oathbound.economy.Currency;
+import com.google.gmail.philbgarner.oathbound.economy.InsufficientFundsException;
 import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroupRef;
 import com.google.gmail.philbgarner.oathbound.oath.Clause;
 import com.google.gmail.philbgarner.oathbound.oath.Condition;
+import com.google.gmail.philbgarner.oathbound.oath.EscrowClaim;
 import com.google.gmail.philbgarner.oathbound.oath.Oath;
 import com.google.gmail.philbgarner.oathbound.oath.OathState;
+import com.google.gmail.philbgarner.oathbound.oath.SerializedItemStack;
 import io.papermc.paper.event.player.AsyncChatEvent;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
+import org.bukkit.inventory.ItemStack;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** Click/drag/chat glue for the named-party oath builder, group picker, and pending-oath GUIs. Text and
- * number input (flag text, kill-count target/quantity, transfer owner name) is collected by closing the
- * GUI and intercepting the player's next chat message rather than any in-inventory text field. */
+/** Click/drag/chat glue for the named-party oath builder, group picker, pending-oath, escrow-deposit,
+ * and escrow-claim GUIs. Text and number input (flag text, kill-count target/quantity, transfer owner
+ * name, escrow currency amount) is collected by closing the GUI and intercepting the player's next chat
+ * message rather than any in-inventory text field. */
 public final class OathBuilderListener implements Listener {
 
-    private enum PromptKind { CUSTOM_FLAG_TEXT, KILLCOUNT_TARGET_NAME, KILLCOUNT_QUANTITY, TRANSFER_OWNER_PLAYER_NAME }
+    private enum PromptKind {
+        CUSTOM_FLAG_TEXT, KILLCOUNT_TARGET_NAME, KILLCOUNT_QUANTITY, TRANSFER_OWNER_PLAYER_NAME, ESCROW_CURRENCY_AMOUNT
+    }
 
     private record PendingPrompt(PromptKind kind, UUID oathId, Object context) {
     }
@@ -52,6 +66,10 @@ public final class OathBuilderListener implements Listener {
             handlePendingBoardClick(event, boardHolder);
         } else if (holder instanceof PendingOathDetailHolder detailHolder) {
             handlePendingDetailClick(event, detailHolder);
+        } else if (holder instanceof EscrowDepositHolder depositHolder) {
+            handleEscrowDepositClick(event, depositHolder);
+        } else if (holder instanceof EscrowClaimBoardHolder claimHolder) {
+            handleEscrowClaimBoardClick(event, claimHolder);
         }
     }
 
@@ -63,9 +81,35 @@ public final class OathBuilderListener implements Listener {
         if (!touchesTop) {
             return;
         }
-        if (holder instanceof OathBuilderHolder || holder instanceof GroupPickerHolder
-                || holder instanceof PendingOathBoardHolder || holder instanceof PendingOathDetailHolder) {
+        if (holder instanceof EscrowDepositHolder) {
+            boolean onlyDeposit = event.getRawSlots().stream().allMatch(EscrowDepositHolder::isDepositSlot);
+            if (!onlyDeposit) {
+                event.setCancelled(true);
+            }
+        } else if (holder instanceof OathBuilderHolder || holder instanceof GroupPickerHolder
+                || holder instanceof PendingOathBoardHolder || holder instanceof PendingOathDetailHolder
+                || holder instanceof EscrowClaimBoardHolder) {
             event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onClose(InventoryCloseEvent event) {
+        if (!(event.getPlayer() instanceof Player player)) {
+            return;
+        }
+        if (event.getInventory().getHolder() instanceof EscrowDepositHolder depositHolder && !depositHolder.isPosted()) {
+            returnDepositedItems(player, event.getInventory(), 0, EscrowDepositHolder.DEPOSIT_SLOTS_END_EXCLUSIVE);
+        }
+    }
+
+    @EventHandler
+    public void onJoin(PlayerJoinEvent event) {
+        PlayerRef playerRef = new PlayerRef(event.getPlayer().getUniqueId());
+        boolean hasUnclaimed = plugin.escrowClaimCache().values().stream()
+                .anyMatch(claim -> !claim.claimed() && claim.holder().equals(playerRef));
+        if (hasUnclaimed) {
+            event.getPlayer().sendMessage("You have unclaimed escrow waiting - check /oathbound-oath claim.");
         }
     }
 
@@ -91,6 +135,11 @@ public final class OathBuilderListener implements Listener {
             player.closeInventory();
             beginPrompt(player, PromptKind.KILLCOUNT_TARGET_NAME, holder.oathId(), null,
                     "Type the target player's name in chat (or 'cancel').");
+        } else if (rawSlot == OathBuilderHolder.ADD_ESCROW_SLOT) {
+            player.closeInventory();
+            Currency currency = plugin.economyService().defaultCurrency();
+            beginPrompt(player, PromptKind.ESCROW_CURRENCY_AMOUNT, holder.oathId(), null,
+                    "Type how much " + currency.id() + " to escrow (0 for none), or 'cancel'.");
         } else if (rawSlot == OathBuilderHolder.PROPOSE_SLOT) {
             proposeOath(player, holder);
         } else if (rawSlot == OathBuilderHolder.CANCEL_SLOT) {
@@ -268,6 +317,112 @@ public final class OathBuilderListener implements Listener {
         return oath;
     }
 
+    // ---- escrow deposit ----
+
+    private void handleEscrowDepositClick(InventoryClickEvent event, EscrowDepositHolder holder) {
+        int rawSlot = event.getRawSlot();
+        int topSize = event.getView().getTopInventory().getSize();
+        boolean clickedTop = rawSlot >= 0 && rawSlot < topSize;
+        if (!clickedTop) {
+            if (event.isShiftClick()) {
+                event.setCancelled(true);
+            }
+            return;
+        }
+        if (EscrowDepositHolder.isDepositSlot(rawSlot)) {
+            return;
+        }
+        event.setCancelled(true);
+        if (!(event.getWhoClicked() instanceof Player player)) {
+            return;
+        }
+        if (rawSlot == EscrowDepositHolder.CONFIRM_SLOT) {
+            confirmEscrowDeposit(player, holder);
+        } else if (rawSlot == EscrowDepositHolder.CANCEL_SLOT) {
+            player.sendMessage("Escrow deposit cancelled.");
+            player.closeInventory();
+            OathBuilderGui.open(plugin, player, holder.oathId());
+        }
+    }
+
+    private void confirmEscrowDeposit(Player player, EscrowDepositHolder holder) {
+        Oath oath = plugin.oathCache().get(holder.oathId());
+        if (oath == null) {
+            player.sendMessage("That oath draft no longer exists.");
+            player.closeInventory();
+            return;
+        }
+        if (oath.parties().size() < 2) {
+            player.sendMessage("This oath doesn't have a named counterparty yet.");
+            return;
+        }
+
+        boolean depositingCurrency = holder.currencyAmount() > 0;
+        if (depositingCurrency) {
+            long balance = plugin.economyService().balance(holder.depositor(), holder.currency());
+            if (balance < holder.currencyAmount()) {
+                player.sendMessage("You don't have " + holder.currencyAmount() + " " + holder.currency().id()
+                        + " - you have " + balance + ".");
+                return;
+            }
+        }
+
+        List<SerializedItemStack> items = takeItems(holder.getInventory(), 0, EscrowDepositHolder.DEPOSIT_SLOTS_END_EXCLUSIVE);
+        if (items.isEmpty() && !depositingCurrency) {
+            player.sendMessage("Deposit at least one item, or set a currency amount, before confirming.");
+            return;
+        }
+
+        if (depositingCurrency) {
+            try {
+                plugin.economyService().withdraw(holder.depositor(), holder.currency(), holder.currencyAmount());
+            } catch (InsufficientFundsException e) {
+                returnDepositedItems(player, holder.getInventory(), 0, EscrowDepositHolder.DEPOSIT_SLOTS_END_EXCLUSIVE);
+                player.sendMessage("You don't have enough " + holder.currency().id() + " anymore.");
+                return;
+            }
+        }
+
+        Map<Currency, Long> currencyMap = depositingCurrency ? Map.of(holder.currency(), holder.currencyAmount()) : Map.of();
+        PlayerRef recipient = oath.parties().get(1);
+        plugin.oathService().addClause(oath, new Clause.EscrowClause(holder.depositor(), recipient, items, currencyMap,
+                List.of(new Clause.ReleaseStep(1.0, new Condition.Immediate()))));
+        plugin.persistOathAsync(oath);
+
+        holder.markPosted();
+        player.sendMessage("Escrow deposited. It's released to them once this oath is signed.");
+        player.closeInventory();
+        OathBuilderGui.open(plugin, player, holder.oathId());
+    }
+
+    // ---- escrow claim board ----
+
+    private void handleEscrowClaimBoardClick(InventoryClickEvent event, EscrowClaimBoardHolder holder) {
+        event.setCancelled(true);
+        int rawSlot = event.getRawSlot();
+        int topSize = event.getView().getTopInventory().getSize();
+        if (rawSlot < 0 || rawSlot >= topSize) {
+            return;
+        }
+        UUID claimId = holder.claimIdAt(rawSlot);
+        if (claimId == null || !(event.getWhoClicked() instanceof Player player)) {
+            return;
+        }
+        EscrowClaim claim = plugin.escrowClaimCache().get(claimId);
+        PlayerRef viewerRef = new PlayerRef(player.getUniqueId());
+        if (claim == null || claim.claimed() || !claim.holder().equals(viewerRef)) {
+            player.sendMessage("That escrow claim is no longer available.");
+            player.closeInventory();
+            return;
+        }
+
+        deliver(player, claim.items());
+        claim.claim();
+        plugin.persistEscrowClaimAsync(claim);
+        player.sendMessage("Claimed.");
+        player.closeInventory();
+    }
+
     // ---- chat-intercept text/number prompts ----
 
     private void beginPrompt(Player player, PromptKind kind, UUID oathId, Object context, String message) {
@@ -303,6 +458,7 @@ public final class OathBuilderListener implements Listener {
             case KILLCOUNT_TARGET_NAME -> applyKillCountTarget(player, prompt, text);
             case KILLCOUNT_QUANTITY -> applyKillCountQuantity(player, prompt, text);
             case TRANSFER_OWNER_PLAYER_NAME -> applyTransferOwnerPlayer(player, prompt, text);
+            case ESCROW_CURRENCY_AMOUNT -> applyEscrowCurrencyAmount(player, prompt, text);
         }
     }
 
@@ -372,6 +528,28 @@ public final class OathBuilderListener implements Listener {
         OathBuilderGui.open(plugin, player, prompt.oathId());
     }
 
+    private void applyEscrowCurrencyAmount(Player player, PendingPrompt prompt, String text) {
+        long amount;
+        try {
+            amount = Long.parseLong(text);
+        } catch (NumberFormatException e) {
+            player.sendMessage("Not a whole number: " + text);
+            OathBuilderGui.open(plugin, player, prompt.oathId());
+            return;
+        }
+        if (amount < 0) {
+            player.sendMessage("Amount can't be negative.");
+            OathBuilderGui.open(plugin, player, prompt.oathId());
+            return;
+        }
+        Oath oath = plugin.oathCache().get(prompt.oathId());
+        if (oath == null) {
+            player.sendMessage("That oath draft no longer exists.");
+            return;
+        }
+        EscrowDepositGui.open(plugin, player, prompt.oathId(), plugin.economyService().defaultCurrency(), amount);
+    }
+
     private OfflinePlayer resolveKnownPlayer(String name) {
         OfflinePlayer player = Bukkit.getOfflinePlayer(name);
         if (!player.hasPlayedBefore() && !player.isOnline()) {
@@ -388,5 +566,40 @@ public final class OathBuilderListener implements Listener {
             event.setCancelled(true);
         }
         return clickedTop;
+    }
+
+    // ---- item helpers ----
+
+    private List<SerializedItemStack> takeItems(Inventory inventory, int fromInclusive, int toExclusive) {
+        List<SerializedItemStack> items = new ArrayList<>();
+        for (int slot = fromInclusive; slot < toExclusive; slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            if (stack != null && stack.getType() != Material.AIR) {
+                items.add(ItemStackSerialization.serialize(stack));
+                inventory.setItem(slot, null);
+            }
+        }
+        return items;
+    }
+
+    private void returnDepositedItems(Player player, Inventory inventory, int fromInclusive, int toExclusive) {
+        for (int slot = fromInclusive; slot < toExclusive; slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            if (stack != null && stack.getType() != Material.AIR) {
+                inventory.setItem(slot, null);
+                giveOrDrop(player, stack);
+            }
+        }
+    }
+
+    private void deliver(Player player, List<SerializedItemStack> items) {
+        for (SerializedItemStack serialized : items) {
+            giveOrDrop(player, ItemStackSerialization.deserialize(serialized));
+        }
+    }
+
+    private void giveOrDrop(Player player, ItemStack stack) {
+        Map<Integer, ItemStack> leftover = player.getInventory().addItem(stack);
+        leftover.values().forEach(remaining -> player.getWorld().dropItemNaturally(player.getLocation(), remaining));
     }
 }

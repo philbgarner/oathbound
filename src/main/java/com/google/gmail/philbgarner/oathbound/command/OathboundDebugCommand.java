@@ -37,8 +37,8 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
 
     private static final List<String> TOP_LEVEL = List.of("group", "oath", "ledger", "altar");
     private static final List<String> GROUP_SUB = List.of("create", "transfer", "info", "list");
-    private static final List<String> OATH_SUB =
-            List.of("create", "addflag", "propose", "seal", "activate", "fulfill", "breach", "void", "info", "list");
+    private static final List<String> OATH_SUB = List.of("create", "addflag", "confirm", "propose", "seal",
+            "activate", "fulfill", "breach", "void", "info", "list");
     private static final List<String> ALTAR_SUB = List.of("list", "info");
 
     private final OathboundPlugin plugin;
@@ -183,6 +183,7 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
         switch (args[1].toLowerCase()) {
             case "create" -> oathCreate(sender, args);
             case "addflag" -> oathAddFlag(sender, args);
+            case "confirm" -> oathConfirm(sender, args);
             case "propose" -> oathTransition(sender, args, OathService::propose);
             case "seal" -> oathTransition(sender, args, OathService::seal);
             case "activate" -> oathTransition(sender, args, OathService::activate);
@@ -224,6 +225,21 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
         plugin.oathService().addClause(oath.get(), new Clause.CustomFlagClause(text));
         plugin.persistOathAsync(oath.get());
         sender.sendMessage("Added CustomFlagClause to " + oath.get().id());
+    }
+
+    private void oathConfirm(Player sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("Usage: /oathbound-debug oath confirm <oathId>");
+            return;
+        }
+        Optional<Oath> oath = findOath(args[2]);
+        if (oath.isEmpty()) {
+            sender.sendMessage("No such oath: " + args[2]);
+            return;
+        }
+        plugin.manualConfirmStore().confirm(oath.get().id(), new PlayerRef(sender.getUniqueId()));
+        sender.sendMessage("Recorded your manual confirmation for oath " + oath.get().id()
+                + ". It takes effect once a ManualConfirm-gated clause's condition engine tick runs.");
     }
 
     @FunctionalInterface

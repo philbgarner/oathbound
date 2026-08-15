@@ -51,6 +51,8 @@ public final class OathBuilderGui {
                 "A free-text roleplay clause", "with no mechanical effect."));
         inventory.setItem(OathBuilderHolder.ADD_KILLCOUNT_SLOT, GuiItems.button(Material.IRON_SWORD, "Add Kill Count",
                 "Requires a target player to be", "killed a number of times."));
+        inventory.setItem(OathBuilderHolder.ADD_ESCROW_SLOT, GuiItems.button(Material.CHEST, "Add Escrow",
+                "Deposit items and/or currency,", "released to " + otherName + " once", "this oath is signed."));
         inventory.setItem(OathBuilderHolder.PROPOSE_SLOT, GuiItems.button(Material.EMERALD_BLOCK, "Propose Oath",
                 "Sends this draft to " + otherName + ".", "Requires at least one clause."));
         inventory.setItem(OathBuilderHolder.CANCEL_SLOT, GuiItems.button(Material.BARRIER, "Cancel Draft",

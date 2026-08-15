@@ -6,10 +6,13 @@ import com.google.gmail.philbgarner.oathbound.economy.Currency;
 import com.google.gmail.philbgarner.oathbound.economy.PlayerBalance;
 import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
+import com.google.gmail.philbgarner.oathbound.oath.DeathRecord;
+import com.google.gmail.philbgarner.oathbound.oath.EscrowClaim;
 import com.google.gmail.philbgarner.oathbound.oath.LedgerEntry;
 import com.google.gmail.philbgarner.oathbound.oath.Oath;
 import com.google.gmail.philbgarner.oathbound.persistence.DataStore;
 import com.google.gmail.philbgarner.oathbound.persistence.DataStoreException;
+import com.google.gmail.philbgarner.oathbound.persistence.dto.EscrowClaimDto;
 import com.google.gmail.philbgarner.oathbound.persistence.dto.GroupDto;
 import com.google.gmail.philbgarner.oathbound.persistence.dto.OathDto;
 import com.google.gmail.philbgarner.oathbound.persistence.dto.TradeOfferDto;
@@ -39,7 +42,9 @@ public final class SqliteDataStore implements DataStore {
     private static final List<String> MIGRATIONS = List.of(
             "db/migrations/0001_init.sql",
             "db/migrations/0002_altars.sql",
-            "db/migrations/0003_trade_offers.sql"
+            "db/migrations/0003_trade_offers.sql",
+            "db/migrations/0004_death_records.sql",
+            "db/migrations/0005_escrow_claims.sql"
     );
 
     private final Path databaseFile;
@@ -414,5 +419,63 @@ public final class SqliteDataStore implements DataStore {
         } catch (SQLException e) {
             throw new DataStoreException("Failed to delete trade offer " + oathId, e);
         }
+    }
+
+    @Override
+    public synchronized void appendDeathRecord(DeathRecord record) throws DataStoreException {
+        String json = gson.toJson(record);
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "INSERT INTO death_records(id, player_id, timestamp, data) VALUES (?, ?, ?, ?)")) {
+            stmt.setString(1, record.id().toString());
+            stmt.setString(2, record.player().playerId().toString());
+            stmt.setString(3, record.timestamp().toString());
+            stmt.setString(4, json);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to append death record " + record.id(), e);
+        }
+    }
+
+    @Override
+    public synchronized List<DeathRecord> loadAllDeathRecords() throws DataStoreException {
+        List<DeathRecord> result = new ArrayList<>();
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT data FROM death_records")) {
+            while (rs.next()) {
+                result.add(gson.fromJson(rs.getString(1), DeathRecord.class));
+            }
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to load all death records", e);
+        }
+        return result;
+    }
+
+    @Override
+    public synchronized void saveEscrowClaim(EscrowClaim claim) throws DataStoreException {
+        String json = gson.toJson(EscrowClaimDto.from(claim));
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "INSERT INTO escrow_claims(id, oath_id, data) VALUES (?, ?, ?) "
+                        + "ON CONFLICT(id) DO UPDATE SET data = excluded.data")) {
+            stmt.setString(1, claim.id().toString());
+            stmt.setString(2, claim.oathId().toString());
+            stmt.setString(3, json);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to save escrow claim " + claim.id(), e);
+        }
+    }
+
+    @Override
+    public synchronized List<EscrowClaim> loadAllEscrowClaims() throws DataStoreException {
+        List<EscrowClaim> result = new ArrayList<>();
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT data FROM escrow_claims")) {
+            while (rs.next()) {
+                result.add(gson.fromJson(rs.getString(1), EscrowClaimDto.class).toDomain());
+            }
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to load all escrow claims", e);
+        }
+        return result;
     }
 }

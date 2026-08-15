@@ -16,6 +16,7 @@ public final class OathBuilderHolder implements InventoryHolder {
     public static final int ADD_TRANSFER_SLOT = 37;
     public static final int ADD_FLAG_SLOT = 39;
     public static final int ADD_KILLCOUNT_SLOT = 41;
+    public static final int ADD_ESCROW_SLOT = 43;
     public static final int PROPOSE_SLOT = 49;
     public static final int CANCEL_SLOT = 53;
 
