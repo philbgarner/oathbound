@@ -53,6 +53,8 @@ public final class OathBuilderGui {
                 "Requires a target player to be", "killed a number of times."));
         inventory.setItem(OathBuilderHolder.ADD_ESCROW_SLOT, GuiItems.button(Material.CHEST, "Add Escrow",
                 "Deposit items and/or currency,", "released to " + otherName + " once", "this oath is signed."));
+        inventory.setItem(OathBuilderHolder.ADD_WITNESS_SLOT, GuiItems.button(Material.PLAYER_HEAD, "Add Witness",
+                "Witnesses: " + oath.witnesses().size(), "Witnessed oaths post to any", "Oath Board on sealing."));
         inventory.setItem(OathBuilderHolder.PROPOSE_SLOT, GuiItems.button(Material.EMERALD_BLOCK, "Propose Oath",
                 "Sends this draft to " + otherName + ".", "Requires at least one clause."));
         inventory.setItem(OathBuilderHolder.CANCEL_SLOT, GuiItems.button(Material.BARRIER, "Cancel Draft",

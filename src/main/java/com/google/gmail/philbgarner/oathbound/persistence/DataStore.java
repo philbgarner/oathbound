@@ -1,6 +1,7 @@
 package com.google.gmail.philbgarner.oathbound.persistence;
 
 import com.google.gmail.philbgarner.oathbound.altar.Altar;
+import com.google.gmail.philbgarner.oathbound.board.OathBoard;
 import com.google.gmail.philbgarner.oathbound.contract.TradeOffer;
 import com.google.gmail.philbgarner.oathbound.economy.PlayerBalance;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
@@ -90,4 +91,10 @@ public interface DataStore {
     List<Notary> loadAllNotaries() throws DataStoreException;
 
     void deleteNotary(UUID id) throws DataStoreException;
+
+    void saveOathBoard(OathBoard board) throws DataStoreException;
+
+    List<OathBoard> loadAllOathBoards() throws DataStoreException;
+
+    void deleteOathBoard(UUID id) throws DataStoreException;
 }

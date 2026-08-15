@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS oath_boards (
+    id TEXT PRIMARY KEY,
+    data TEXT NOT NULL
+);

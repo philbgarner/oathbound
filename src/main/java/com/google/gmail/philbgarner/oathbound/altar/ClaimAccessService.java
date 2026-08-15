@@ -2,10 +2,12 @@ package com.google.gmail.philbgarner.oathbound.altar;
 
 import com.google.gmail.philbgarner.oathbound.group.EntityRef;
 import com.google.gmail.philbgarner.oathbound.group.GroupPermission;
+import com.google.gmail.philbgarner.oathbound.group.GroupTier;
 import com.google.gmail.philbgarner.oathbound.group.OwnershipResolver;
 import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroupRef;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.Objects;
 import java.util.Optional;
@@ -18,32 +20,60 @@ public final class ClaimAccessService {
     }
 
     /** The altar (if any) whose live radius currently covers {@code blockLoc}. Radius is recomputed
-     * live per altar, never stored - see {@link AltarRadiusCalculator}. If several altars cover the
-     * same point, the one with the smallest current radius wins (closest approximation of the master
-     * plan's smallest-scope-first rule without full nesting resolution, which is a later phase). */
+     * live per altar from its current Power (see {@link AltarPowerMath}) and {@link AltarRadiusCalculator}.
+     * If several altars cover the same point, the smallest current radius wins; ties are broken by the
+     * smallest {@link com.google.gmail.philbgarner.oathbound.group.GroupTier} ordinal, then by the
+     * altar's id as an arbitrary deterministic fallback. This answers "whose ruleset applies to this
+     * exact block right now" - a distinct, ongoing question from new-altar placement legality, which
+     * {@link AltarNestingService} handles separately. */
     public static Optional<Altar> coveringAltar(AltarLocation blockLoc, Collection<Altar> altars,
+                                                 Instant now, int decayDays,
                                                  AltarRadiusCalculator calculator, OwnershipResolver.GroupLookup lookup) {
         Objects.requireNonNull(blockLoc, "blockLoc");
         Objects.requireNonNull(altars, "altars");
+        Objects.requireNonNull(now, "now");
         Objects.requireNonNull(calculator, "calculator");
         Objects.requireNonNull(lookup, "lookup");
 
         Altar closest = null;
         int closestRadius = Integer.MAX_VALUE;
+        GroupTier closestTier = null;
         for (Altar altar : altars) {
             if (!altar.location().worldId().equals(blockLoc.worldId())) {
                 continue;
             }
-            int radius = calculator.radiusFor(altar, lookup);
+            long power = altar.currentPower(now, decayDays);
+            GroupTier tier = AltarRadiusCalculator.tierOf(altar.owner(), lookup);
+            int radius = calculator.radiusFor(power, tier);
             if (radius <= 0) {
                 continue;
             }
-            if (isWithinRadius(altar.location(), blockLoc, radius) && radius < closestRadius) {
+            if (!altar.location().isWithin(blockLoc, radius)) {
+                continue;
+            }
+            boolean better = closest == null
+                    || radius < closestRadius
+                    || (radius == closestRadius && tier.ordinal() < closestTier.ordinal())
+                    || (radius == closestRadius && tier.ordinal() == closestTier.ordinal()
+                            && altar.id().compareTo(closest.id()) < 0);
+            if (better) {
                 closest = altar;
                 closestRadius = radius;
+                closestTier = tier;
             }
         }
         return Optional.ofNullable(closest);
+    }
+
+    /** Like {@link #coveringAltar}, but also excludes an altar that's mid-reconsecration-cooldown - it's
+     * unprotected even though its Power/radius already read as sufficient. Used by every live
+     * protection check (build gating, monster-spawn suppression); {@link #coveringAltar} itself stays
+     * cooldown-agnostic since some callers (debug info) want the raw covering altar regardless. */
+    public static Optional<Altar> protectedAltar(AltarLocation blockLoc, Collection<Altar> altars,
+                                                  Instant now, int decayDays,
+                                                  AltarRadiusCalculator calculator, OwnershipResolver.GroupLookup lookup) {
+        return coveringAltar(blockLoc, altars, now, decayDays, calculator, lookup)
+                .filter(altar -> altar.cooledDown(now));
     }
 
     /** Fail-safe deny: an altar owned by a group that no longer resolves, or whose owning group lacks
@@ -64,11 +94,5 @@ public final class ClaimAccessService {
                     .orElse(false);
         }
         return false;
-    }
-
-    private static boolean isWithinRadius(AltarLocation center, AltarLocation point, int radius) {
-        long dx = center.x() - point.x();
-        long dz = center.z() - point.z();
-        return dx * dx + dz * dz <= (long) radius * radius;
     }
 }

@@ -42,7 +42,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class OathBuilderListener implements Listener {
 
     private enum PromptKind {
-        CUSTOM_FLAG_TEXT, KILLCOUNT_TARGET_NAME, KILLCOUNT_QUANTITY, TRANSFER_OWNER_PLAYER_NAME, ESCROW_CURRENCY_AMOUNT
+        CUSTOM_FLAG_TEXT, KILLCOUNT_TARGET_NAME, KILLCOUNT_QUANTITY, TRANSFER_OWNER_PLAYER_NAME,
+        ESCROW_CURRENCY_AMOUNT, WITNESS_PLAYER_NAME
     }
 
     private record PendingPrompt(PromptKind kind, UUID oathId, Object context) {
@@ -140,6 +141,10 @@ public final class OathBuilderListener implements Listener {
             Currency currency = plugin.economyService().defaultCurrency();
             beginPrompt(player, PromptKind.ESCROW_CURRENCY_AMOUNT, holder.oathId(), null,
                     "Type how much " + currency.id() + " to escrow (0 for none), or 'cancel'.");
+        } else if (rawSlot == OathBuilderHolder.ADD_WITNESS_SLOT) {
+            player.closeInventory();
+            beginPrompt(player, PromptKind.WITNESS_PLAYER_NAME, holder.oathId(), null,
+                    "Type a witness's player name in chat (or 'cancel').");
         } else if (rawSlot == OathBuilderHolder.PROPOSE_SLOT) {
             proposeOath(player, holder);
         } else if (rawSlot == OathBuilderHolder.CANCEL_SLOT) {
@@ -468,6 +473,7 @@ public final class OathBuilderListener implements Listener {
             case KILLCOUNT_QUANTITY -> applyKillCountQuantity(player, prompt, text);
             case TRANSFER_OWNER_PLAYER_NAME -> applyTransferOwnerPlayer(player, prompt, text);
             case ESCROW_CURRENCY_AMOUNT -> applyEscrowCurrencyAmount(player, prompt, text);
+            case WITNESS_PLAYER_NAME -> applyWitness(player, prompt, text);
         }
     }
 
@@ -557,6 +563,35 @@ public final class OathBuilderListener implements Listener {
             return;
         }
         EscrowDepositGui.open(plugin, player, prompt.oathId(), plugin.economyService().defaultCurrency(), amount);
+    }
+
+    private void applyWitness(Player player, PendingPrompt prompt, String name) {
+        OfflinePlayer target = resolveKnownPlayer(name);
+        if (target == null) {
+            player.sendMessage("Unknown player: " + name);
+            OathBuilderGui.open(plugin, player, prompt.oathId());
+            return;
+        }
+        Oath oath = plugin.oathCache().get(prompt.oathId());
+        if (oath == null) {
+            player.sendMessage("That oath draft no longer exists.");
+            return;
+        }
+        PlayerRef witnessRef = new PlayerRef(target.getUniqueId());
+        if (oath.parties().contains(witnessRef)) {
+            player.sendMessage("A party to the oath can't also witness it.");
+            OathBuilderGui.open(plugin, player, prompt.oathId());
+            return;
+        }
+        if (oath.witnesses().contains(witnessRef)) {
+            player.sendMessage(name + " is already a witness.");
+            OathBuilderGui.open(plugin, player, prompt.oathId());
+            return;
+        }
+        plugin.oathService().addWitness(oath, witnessRef);
+        plugin.persistOathAsync(oath);
+        player.sendMessage(name + " added as a witness.");
+        OathBuilderGui.open(plugin, player, prompt.oathId());
     }
 
     private OfflinePlayer resolveKnownPlayer(String name) {

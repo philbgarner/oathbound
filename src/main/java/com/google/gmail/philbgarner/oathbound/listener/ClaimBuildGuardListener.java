@@ -11,13 +11,15 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
 /**
  * Protects block break/place inside any Altar's live claim radius from non-permitted players, via
- * {@link ClaimAccessService}. Functionally inert until Altar Power/sacrifice exists (radius is always
- * 0 today), but the gating mechanism is wired up now so it activates automatically once that lands.
+ * {@link ClaimAccessService#protectedAltar}. Uses the cooldown-aware lookup, not the raw covering-altar
+ * one, so an altar mid-reconsecration-cooldown is treated as unprotected even though its Power/radius
+ * already read as sufficient.
  */
 public final class ClaimBuildGuardListener implements Listener {
 
@@ -46,7 +48,8 @@ public final class ClaimBuildGuardListener implements Listener {
     private boolean canBuild(Block block, UUID playerId) {
         AltarLocation location =
                 new AltarLocation(block.getWorld().getUID(), block.getX(), block.getY(), block.getZ());
-        Optional<Altar> altar = ClaimAccessService.coveringAltar(location, plugin.altarCache().values(),
+        Optional<Altar> altar = ClaimAccessService.protectedAltar(location, plugin.altarCache().values(),
+                Instant.now(), plugin.oathboundConfig().altarDecayDays(),
                 plugin.altarRadiusCalculator(), id -> Optional.ofNullable(plugin.groupCache().get(id)));
         if (altar.isEmpty()) {
             return true;

@@ -48,7 +48,10 @@ to stand up.
 - **Territory altars** — consecrate an altar by stacking a barrel, a capstone block (obsidian by
   default, configurable), and a candle. Completing the structure creates the altar at zero Power;
   claim radius is a live, diminishing-returns function of Power and scales with your group's tier
-  (Individual → Company → Town → Region → Kingdom).
+  (Individual → Company → Town → Region → Kingdom). Right-click the barrel to sacrifice enchanted items
+  and charge Power, which decays back to zero over a configurable number of days if left unmaintained;
+  a Critical-Power altar loses protection entirely and its barrel can be Destroyed (a Desecration) or
+  Looted.
 - **Chest-GUI open trade contracts** — post an item-for-item barter offer with no named counterparty
   through an in-world chest interface; anyone can browse the open contract board and fulfill it. The
   first player to accept becomes the oath's second party and the swap happens automatically, with
@@ -68,8 +71,7 @@ to stand up.
   fast permission checks and async writes so gameplay never blocks on disk I/O.
 
 See [`oathbound-master-plan.md`](./oathbound-master-plan.md) for the full design doc, including
-systems not built yet (the Public Oath Board, elections, bounty contracts, the altar sacrifice/decay
-ritual, and the full counter-offer negotiation chain).
+systems not built yet (elections, bounty contracts, and the full counter-offer negotiation chain).
 
 ---
 
@@ -81,8 +83,8 @@ An Oath has two or more parties, an optional list of witnesses, and a list of cl
 as a private `DRAFT`, gets `PROPOSED` to the other party, becomes `SEALED` once accepted, then `ACTIVE`
 while its conditions are tracked. It resolves into exactly one of `FULFILLED`, `BROKEN`, or `VOIDED` —
 and stays there; terminal states have no further transitions. Every transition is recorded in the
-**Ledger**, an append-only log that's the single source of truth for oath history (and, eventually,
-the Public Oath Board).
+**Ledger**, an append-only log that's the single source of truth for oath history - the Public Oath
+Board queries it live rather than keeping its own copy.
 
 An Oath can also be **open**: instead of naming a counterparty up front, it starts with just its
 creator and sits `PROPOSED` with an empty second slot. Whoever accepts it first fills that slot and
@@ -111,9 +113,12 @@ GUI for building it up: click a button to add a **transfer** clause (reassigns o
 `ProtectionGroup`s' ownership), a **custom flag** (free-text roleplay clause with no mechanical effect),
 a **kill count** (a target player and a required kill tally - not executed yet, see the Roadmap), or an
 **escrow** clause (deposit items and/or currency, released to the counterparty once the oath is signed).
-Since chest GUIs have no text field, any free text or numbers a clause needs (flag wording, a target's
-name, a quantity, a currency amount) are collected by closing the GUI and typing the answer in chat,
-which the plugin intercepts. Once at least one clause is attached, **Propose** sends the draft to the
+A separate **Add Witness** button (not a clause - witnesses don't affect the oath's terms) lets you name
+players who'll see this oath post to any Oath Board once it's sealed, fulfilled, or broken; unwitnessed
+oaths never post anywhere, for privacy. Since chest GUIs have no text field, any free text or numbers a
+clause needs (flag wording, a target's name, a quantity, a currency amount, a witness's name) are
+collected by closing the GUI and typing the answer in chat, which the plugin intercepts. Once at least
+one clause is attached, **Propose** sends the draft to the
 named counterparty; they review it and sign or decline it from their own `/oathbound-oath pending` board.
 Signing carries the oath straight through `SEALED` into `ACTIVE`, same as accepting an open contract does.
 
@@ -157,10 +162,23 @@ economy.
 An altar starts as three blocks stacked directly on top of each other: a **barrel**, a **capstone
 block** (obsidian by default — configurable), and a **candle**. Placing the candle is the trigger:
 Oathbound checks what's directly below it, and if the structure is right, the altar is consecrated on
-the spot, owned by whoever placed the candle, at **zero Power**. Its claim radius is computed live from
-current Power — at zero Power, that's zero radius. Charging Power via a sacrifice ritual, decay over
-time, vulnerability tiers, and desecration are designed (see the master plan, §10) but not implemented
-yet.
+the spot, owned by whoever placed the candle, at **zero Power**, provided the location doesn't fall
+inside another altar's claim of the same or smaller `GroupTier` (nesting inside a strictly larger one -
+federating under a liege - is allowed). Its claim radius is computed live from current Power — at zero
+Power, that's zero radius.
+
+Right-clicking the barrel opens a chest-GUI **sacrifice interface**: deposit enchanted items (item type
+doesn't matter, only the enchantment profile does) and confirm to consume them permanently and add to
+Power. Power is never stored as a raw number — like radius, it's recomputed live from the last
+sacrifice's total and a configurable "days full-to-empty" decay rate, so it visibly drains if the altar
+isn't maintained. Three vulnerability tiers gate everything else: **Normal** and **Decaying** (a
+configurable warning threshold triggers a login nudge to the owner) both keep full protection; only
+**Critical** (Power at or below a small configurable threshold) drops protection to zero and makes the
+barrel interactable for an outcome — **Destroy** it (a Desecration: Honor penalty for the breaker, a
+dramatic server-wide broadcast, and the altar record is deleted outright, requiring the structure to be
+physically rebuilt) or **Loot** it (XP orbs worth the most recent sacrifice's value, no Honor penalty by
+default). Any successful top-up starts a configurable reconsecration cooldown (5 minutes by default)
+before protection re-engages, even if Power already reads as sufficient.
 
 ### Notary
 
@@ -174,10 +192,21 @@ unanswered past a configurable number of days. Recipients still only sign or dec
 pending-oath board — editable counter-offers (the master plan's full negotiation state machine) aren't
 implemented yet.
 
+### Public Oath Board
+
+Right-click the configured block (an oak sign by default) to open a small hub: **Browse Postings**
+(read-only - a live-queried feed of recent witnessed activity, newest first), **Bind To A Group** (pick
+one of your groups; the board becomes regional, showing only postings where a party is a member of that
+group), or **Make Capital** (unbound - shows everything). Only *witnessed* oaths post, and only on
+sealing, fulfillment, or breach; a witnessed Blood Oath breaking also broadcasts a dramatic message
+server-wide, while every other posting is only visible by browsing a board. Nothing about a posting is
+separately stored - the feed is computed fresh from the Ledger and the live oath cache every time the
+board is opened, the same pattern every other board-style GUI in this plugin already uses.
+
 ### Persistence
 
 All state — oaths, groups, ledger entries, balances, altars, trade offers, death records, escrow claims,
-protections, Honor, notaries — is stored via a
+protections, Honor, notaries, oath boards — is stored via a
 `DataStore` adapter interface. The only implementation today is SQLite (embedded, file-based, bundled
 inside the plugin jar — there is nothing separate to install or run). The interface is adapter-based
 specifically so a flat-file/YAML backend can be added later without touching any calling code.
@@ -210,6 +239,11 @@ specifically so a flat-file/YAML backend can be added later without touching any
 Right-click an installed Notary to open its menu (start a new named-party oath draft, or review oaths
 proposed to you), or right-click the configured Sealing Table block (a lectern by default) for a
 face-to-face shortcut straight to the draft prompt.
+
+### Public Oath Board (in-game)
+
+No install command - right-click the configured board block (an oak sign by default) anywhere to open
+its hub and bind it (regional, to one of your groups) or leave/make it capital, then browse its feed.
 
 ### Debug commands
 
@@ -246,6 +280,10 @@ debug command surface lets you exercise it directly. Commands require a player, 
 /oathbound-debug notary list
 /oathbound-debug notary info <notaryId>
 /oathbound-debug notary remove <notaryId>
+
+/oathbound-debug board list
+/oathbound-debug board info <boardId>
+/oathbound-debug board remove <boardId>
 ```
 
 `tier` is one of `INDIVIDUAL`, `COMPANY`, `TOWN`, `REGION`, `KINGDOM`. Tab completion works for
@@ -379,10 +417,15 @@ notary:
   sealing-table-material: LECTERN
   pending-offer-cap-per-player: 10
   negotiation-expiry-days: 7
+
+oath-board:
+  material: OAK_SIGN
+  feed-size: 50
 ```
 
-`capstone-material` and `lock-tool-material` accept any valid Bukkit `Material` name, and
-`blood-oath-breach-debuff-effect` accepts any valid Bukkit `PotionEffectType` name.
+`capstone-material`, `lock-tool-material`, `sealing-table-material`, and `oath-board.material` all accept
+any valid Bukkit `Material` name (each must be distinct), and `blood-oath-breach-debuff-effect` accepts
+any valid Bukkit `PotionEffectType` name.
 
 ---
 
@@ -457,9 +500,54 @@ Tracking against the [master design plan](./oathbound-master-plan.md)'s build or
       implement the master plan's full `DRAFT → OFFERED → COUNTERED → ...` negotiation state machine —
       recipients still only Sign or Decline a proposal (the existing pending-oath board), not edit and
       counter-offer it. True counter-offering is left for a later pass.
-- [ ] Public Oath Board (regional + capital)
-- [ ] Altar sacrifice ritual (Power accrual), decay, vulnerability tiers, desecration outcomes,
-      reconsecration cooldown, and claim nesting/overlap resolution
+- [x] Public Oath Board (regional + capital) — right-click the configured block (an oak sign by
+      default) to open a hub: browse recent witnessed activity, bind the board to a group you're a
+      member of (regional - shows postings where either party is a group member), or make it capital
+      (unbound - shows everything). Postings aren't a separately stored feed; the feed GUI live-queries
+      the Ledger each time it's opened, exactly like every other board screen in this plugin. Only
+      *witnessed* oaths post (sealed, fulfilled, or broken - proposing/activating/voiding stay silent),
+      which required adding an actual witnessing flow: the oath builder GUI now has an "Add Witness"
+      button (type a name in chat) alongside its clause buttons, since nothing previously called
+      `OathService.addWitness`. A witnessed Blood Oath breaking additionally broadcasts a server-wide
+      message - the design doc's "special/dramatic formatting, possibly a broadcast" - while every other
+      posting (sealed, fulfilled, non-blood breaks) is only visible by browsing a board, not broadcast,
+      to avoid chat spam. **Not implemented:** "significant Honor tier crossings" as board postings -
+      unlike oath state transitions, a tier crossing isn't reconstructable from the Ledger alone and
+      would need its own persisted feed; left for a later pass. Altar desecration postings are out of
+      scope until Altar desecration itself exists.
+- [x] Altar sacrifice ritual (Power accrual), decay, vulnerability tiers, desecration outcomes,
+      reconsecration cooldown, and claim nesting/overlap resolution — right-clicking a consecrated
+      altar's barrel opens a chest-GUI sacrifice interface; only enchanted items count as artifacts,
+      valued purely off their enchantment profile (base weight = a configurable scale divided by each
+      enchantment's max level, so maxing out any enchantment is worth the same regardless of item type),
+      summed per item with each repeated enchantment type within one sacrifice batch discounted by a
+      configurable per-repeat multiplier to discourage volume-stuffing, and consumed permanently on
+      confirm. Power is never stored as a raw counter - like radius, it's a live function recomputed
+      from each altar's last-sacrifice baseline and a configurable "days full-to-empty" decay rate, so a
+      single large sacrifice always outlasts the same total value drip-fed across several smaller ones
+      (decay eats the gap between deposits). Three vulnerability tiers (Normal, Decaying, Critical) gate
+      everything else: crossing into Decaying below a configurable warning threshold fires a login nudge
+      to the owner; only below a configurable critical threshold does protection actually drop to zero
+      and the barrel become interactable for an outcome - Destroy (a Desecration: Honor penalty for the
+      breaker, a server-wide chat broadcast mirroring the existing Blood-Oath-break broadcast, and the
+      altar record is deleted outright, requiring the barrel/capstone/candle structure to be physically
+      rebuilt, not just re-funded) or Loot (XP orbs worth the most recent single sacrifice's value,
+      configurable conversion rate, no Honor penalty by default). Any successful top-up - recovering
+      from Critical or a fresh reconsecration - starts a configurable cooldown (baseline 5 minutes)
+      during which protection and surface monster-spawn suppression both stay suppressed even though
+      Power/radius already read as sufficient, closing the panic-deposit-mid-raid loophole. New-altar
+      placement is blocked if it overlaps an existing altar of the same or smaller `GroupTier`
+      (Individual < Company < Town < Region < Kingdom) but is explicitly allowed to nest inside a
+      strictly larger one (federating under a liege); this check runs once, at consecration time, and a
+      larger claim later shrinking from decay never retroactively invalidates anything already nested
+      inside it. The separate, ongoing "which claim's rules apply here" build-gating lookup is unchanged
+      in shape (still smallest live radius wins) but now tie-breaks by smallest `GroupTier` when radii
+      match exactly. An Oath Board posting for decay warnings/desecration was considered and deliberately
+      skipped, same reasoning as the Honor-tier-crossing gap noted above - not reconstructable from the
+      Ledger, would need its own persisted feed; the chat broadcast covers the "dramatic" requirement on
+      its own, and an ambient in-world signal is left for the existing Polish-pass roadmap bullet.
+      Multiple altars per owner were already fully independent (separate Power/radius/decay/cooldown per
+      record) with no extra work needed.
 - [ ] Election Oaths — also where `VoteTally` gets wired up to a real ballot backend
 - [ ] Bounty / Kill Contracts — quantity/group targeting, head-return fulfillment, heat-scaling fees,
       banishment, and the condition-engine hookup for `KillCountClause` itself

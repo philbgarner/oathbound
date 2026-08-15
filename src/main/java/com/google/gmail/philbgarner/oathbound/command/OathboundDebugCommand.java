@@ -2,6 +2,10 @@ package com.google.gmail.philbgarner.oathbound.command;
 
 import com.google.gmail.philbgarner.oathbound.OathboundPlugin;
 import com.google.gmail.philbgarner.oathbound.altar.Altar;
+import com.google.gmail.philbgarner.oathbound.altar.AltarRadiusCalculator;
+import com.google.gmail.philbgarner.oathbound.altar.AltarVulnerability;
+import com.google.gmail.philbgarner.oathbound.altar.AltarVulnerabilityTier;
+import com.google.gmail.philbgarner.oathbound.board.OathBoard;
 import com.google.gmail.philbgarner.oathbound.economy.EconomyService;
 import com.google.gmail.philbgarner.oathbound.group.EntityRef;
 import com.google.gmail.philbgarner.oathbound.group.GroupPermission;
@@ -28,6 +32,7 @@ import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -38,13 +43,15 @@ import java.util.stream.Collectors;
 /** Minimal command surface to exercise the Phase 1 domain layer in-game before any GUI exists. */
 public final class OathboundDebugCommand implements CommandExecutor, TabCompleter {
 
-    private static final List<String> TOP_LEVEL = List.of("group", "oath", "ledger", "altar", "honor", "notary");
+    private static final List<String> TOP_LEVEL =
+            List.of("group", "oath", "ledger", "altar", "honor", "notary", "board");
     private static final List<String> GROUP_SUB = List.of("create", "transfer", "info", "list");
     private static final List<String> OATH_SUB = List.of("create", "addflag", "confirm", "propose", "seal",
             "activate", "fulfill", "breach", "void", "info", "list");
     private static final List<String> ALTAR_SUB = List.of("list", "info");
     private static final List<String> HONOR_SUB = List.of("info", "adjust");
     private static final List<String> NOTARY_SUB = List.of("list", "info", "remove");
+    private static final List<String> BOARD_SUB = List.of("list", "info", "remove");
 
     private final OathboundPlugin plugin;
 
@@ -59,7 +66,7 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
             return true;
         }
         if (args.length == 0) {
-            sender.sendMessage("Usage: /" + label + " <group|oath|ledger|altar|honor|notary> ...");
+            sender.sendMessage("Usage: /" + label + " <group|oath|ledger|altar|honor|notary|board> ...");
             return true;
         }
         try {
@@ -70,6 +77,7 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
                 case "altar" -> handleAltar(player, args);
                 case "honor" -> handleHonor(player, args);
                 case "notary" -> handleNotary(player, args);
+                case "board" -> handleBoard(player, args);
                 default -> sender.sendMessage("Unknown top-level command: " + args[0]);
             }
         } catch (OathTransitionException e) {
@@ -346,9 +354,11 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
             sender.sendMessage("No altars.");
             return;
         }
+        Instant now = Instant.now();
+        int decayDays = plugin.oathboundConfig().altarDecayDays();
         for (Altar altar : plugin.altarCache().values()) {
-            sender.sendMessage(altar.id() + " owner=" + altar.owner() + " power=" + altar.power()
-                    + " loc=" + altar.location());
+            sender.sendMessage(altar.id() + " owner=" + altar.owner()
+                    + " power=" + altar.currentPower(now, decayDays) + " loc=" + altar.location());
         }
     }
 
@@ -363,10 +373,18 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
             return;
         }
         Altar a = altar.get();
-        int radius = plugin.altarRadiusCalculator().radiusFor(a, id -> Optional.ofNullable(plugin.groupCache().get(id)));
+        Instant now = Instant.now();
+        int decayDays = plugin.oathboundConfig().altarDecayDays();
+        long power = a.currentPower(now, decayDays);
+        GroupTier tier = AltarRadiusCalculator.tierOf(a.owner(), id -> Optional.ofNullable(plugin.groupCache().get(id)));
+        int radius = plugin.altarRadiusCalculator().radiusFor(power, tier);
+        AltarVulnerabilityTier vulnerability = AltarVulnerability.classify(power,
+                plugin.oathboundConfig().altarCriticalThreshold(), plugin.oathboundConfig().altarDecayingThreshold());
         sender.sendMessage("Altar " + a.id() + " owner=" + a.owner());
-        sender.sendMessage("  location=" + a.location() + " power=" + a.power() + " radius=" + radius);
-        sender.sendMessage("  consecratedAt=" + a.consecratedAt());
+        sender.sendMessage("  location=" + a.location() + " power=" + power + " radius=" + radius
+                + " tier=" + vulnerability);
+        sender.sendMessage("  consecratedAt=" + a.consecratedAt() + " cooldownUntil=" + a.cooldownUntil()
+                + " lastSacrificeValue=" + a.lastSacrificeValue());
     }
 
     // ---- honor ----
@@ -471,6 +489,62 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
         sender.sendMessage("Removed notary '" + n.name() + "'.");
     }
 
+    // ---- board ----
+
+    private void handleBoard(Player sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage("Usage: /oathbound-debug board <list|info|remove> ...");
+            return;
+        }
+        switch (args[1].toLowerCase()) {
+            case "list" -> boardList(sender);
+            case "info" -> boardInfo(sender, args);
+            case "remove" -> boardRemove(sender, args);
+            default -> sender.sendMessage("Unknown board subcommand: " + args[1]);
+        }
+    }
+
+    private void boardList(Player sender) {
+        if (plugin.oathBoardCache().isEmpty()) {
+            sender.sendMessage("No oath boards.");
+            return;
+        }
+        for (OathBoard board : plugin.oathBoardCache().values()) {
+            sender.sendMessage(board.id() + " scope=" + (board.isCapital() ? "capital" : board.regionalGroup())
+                    + " loc=" + board.location());
+        }
+    }
+
+    private void boardInfo(Player sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("Usage: /oathbound-debug board info <boardId>");
+            return;
+        }
+        Optional<OathBoard> board = findOathBoard(args[2]);
+        if (board.isEmpty()) {
+            sender.sendMessage("No such board: " + args[2]);
+            return;
+        }
+        OathBoard b = board.get();
+        sender.sendMessage("Board " + b.id() + " scope=" + (b.isCapital() ? "capital" : b.regionalGroup()));
+        sender.sendMessage("  location=" + b.location() + " installer=" + b.installer() + " installedAt=" + b.installedAt());
+    }
+
+    private void boardRemove(Player sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("Usage: /oathbound-debug board remove <boardId>");
+            return;
+        }
+        Optional<OathBoard> board = findOathBoard(args[2]);
+        if (board.isEmpty()) {
+            sender.sendMessage("No such board: " + args[2]);
+            return;
+        }
+        plugin.oathBoardCache().remove(board.get().id());
+        plugin.deleteOathBoardAsync(board.get().id());
+        sender.sendMessage("Removed board.");
+    }
+
     // ---- lookups ----
 
     private Optional<Altar> findAltar(String idString) {
@@ -505,6 +579,14 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
         }
     }
 
+    private Optional<OathBoard> findOathBoard(String idString) {
+        try {
+            return Optional.ofNullable(plugin.oathBoardCache().get(UUID.fromString(idString)));
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
+        }
+    }
+
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
@@ -517,6 +599,7 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
                 case "altar" -> filter(ALTAR_SUB, args[1]);
                 case "honor" -> filter(HONOR_SUB, args[1]);
                 case "notary" -> filter(NOTARY_SUB, args[1]);
+                case "board" -> filter(BOARD_SUB, args[1]);
                 default -> new ArrayList<>();
             };
         }

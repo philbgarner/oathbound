@@ -3,6 +3,8 @@ package com.google.gmail.philbgarner.oathbound.listener;
 import com.google.gmail.philbgarner.oathbound.OathboundPlugin;
 import com.google.gmail.philbgarner.oathbound.altar.Altar;
 import com.google.gmail.philbgarner.oathbound.altar.AltarLocation;
+import com.google.gmail.philbgarner.oathbound.altar.AltarNestingService;
+import com.google.gmail.philbgarner.oathbound.group.GroupTier;
 import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
 import org.bukkit.Material;
 import org.bukkit.Tag;
@@ -13,6 +15,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockPlaceEvent;
 
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -56,8 +59,17 @@ public final class AltarConsecrationListener implements Listener {
             return;
         }
 
+        AltarNestingService.NestingResult nesting = AltarNestingService.checkPlacement(
+                location, GroupTier.INDIVIDUAL, plugin.altarCache().values(), Instant.now(),
+                plugin.oathboundConfig().altarDecayDays(), plugin.altarRadiusCalculator(),
+                id -> Optional.ofNullable(plugin.groupCache().get(id)));
+        if (!nesting.legal()) {
+            event.getPlayer().sendMessage("This location falls within another altar's claim - consecration failed.");
+            return;
+        }
+
         PlayerRef owner = new PlayerRef(event.getPlayer().getUniqueId());
-        Altar altar = new Altar(UUID.randomUUID(), owner, location, 0L, Instant.now());
+        Altar altar = new Altar(UUID.randomUUID(), owner, location, Instant.now());
         plugin.altarCache().put(altar.id(), altar);
         plugin.persistAltarAsync(altar);
 

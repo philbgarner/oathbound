@@ -23,8 +23,7 @@ altar:
   # Block required directly on top of the barrel, with a candle placed on top of that, to
   # consecrate an altar. Placing the candle is what triggers altar creation.
   capstone-material: OBSIDIAN
-  # Radius (in blocks) = power-radius-scale * tier-multiplier * sqrt(current Power). Placeholder
-  # curve - real tuning happens once the sacrifice/decay system is built.
+  # Radius (in blocks) = power-radius-scale * tier-multiplier * sqrt(current Power).
   power-radius-scale: 4.0
   tier-radius-multiplier:
     INDIVIDUAL: 1.0
@@ -32,6 +31,33 @@ altar:
     TOWN: 1.5
     REGION: 2.0
     KINGDOM: 3.0
+  # Days of neglect for an altar's Power to decay from its last-sacrifice baseline down to zero. Each
+  # altar's own most recent top-up total is its own "full" - this is a flat rate, not tied to a global
+  # power cap.
+  decay-days: 5
+  # At or below this live Power, an altar is Critical: protection radius drops to zero and the barrel
+  # becomes interactable for a Destroy (desecration) or Loot outcome.
+  critical-threshold: 10
+  # At or below this live Power (but above critical-threshold), an altar is Decaying: still fully
+  # protected, but the owner gets a login warning.
+  decaying-threshold: 100
+  # XP orbs dropped when looting a Critical altar's barrel = this * the value of the most recent
+  # completed sacrifice (not lifetime total).
+  xp-loot-conversion-rate: 1.0
+  # Seconds after any successful top-up (recovering from Critical, or a fresh post-desecration
+  # reconsecration) before protection re-engages, even if Power already reads as sufficient.
+  reconsecration-cooldown-seconds: 300
+  # Sacrifice valuation: an enchantment's base weight = this scale divided by its max level, so maxing
+  # out any single enchantment is worth the same regardless of item type or how many levels it has.
+  enchantment-weight-scale: 10.0
+  # Each repeated occurrence of the same enchantment type within one sacrifice batch is multiplied by
+  # this factor (compounding), to discourage volume-stuffing many low-value items in one deposit.
+  repeat-enchantment-decay: 0.5
+  # Honor penalty applied to whoever destroys a Critical altar's barrel (a Desecration).
+  desecration-honor-penalty: 50
+  # Honor penalty applied to whoever loots (rather than destroys) a Critical altar's barrel. Zero by
+  # default - looting isn't punished unless a server admin wants to discourage even that.
+  loot-honor-penalty: 0
 
 protection:
   # Item that must be held to lock/unlock a chest or door - right-click the block while holding
@@ -74,3 +100,11 @@ notary:
   # Days a named-party oath can sit PROPOSED unanswered before it's automatically voided (neutral,
   # no Honor change - same as any other mutually-cancelled oath).
   negotiation-expiry-days: 7
+
+oath-board:
+  # Block that opens the Oath Board hub on right-click - browse recent witnessed activity, or bind
+  # the board to a ProtectionGroup (regional) or unbind it (capital, shows everything).
+  material: OAK_SIGN
+  # How many of the most recent Ledger entries to scan when building a board's feed. Not a cap on
+  # how many postings can show - just how far back the live query looks.
+  feed-size: 50

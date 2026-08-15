@@ -2,6 +2,9 @@ package com.google.gmail.philbgarner.oathbound.persistence.sqlite;
 
 import com.google.gmail.philbgarner.oathbound.altar.Altar;
 import com.google.gmail.philbgarner.oathbound.altar.AltarLocation;
+import com.google.gmail.philbgarner.oathbound.altar.AltarVulnerabilityTier;
+import com.google.gmail.philbgarner.oathbound.board.BoardLocation;
+import com.google.gmail.philbgarner.oathbound.board.OathBoard;
 import com.google.gmail.philbgarner.oathbound.contract.TradeOffer;
 import com.google.gmail.philbgarner.oathbound.economy.Currency;
 import com.google.gmail.philbgarner.oathbound.economy.PlayerBalance;
@@ -43,6 +46,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Exercises the SQLite adapter directly (no Bukkit runtime needed) - stands in for the
@@ -201,12 +205,16 @@ final class SqliteDataStoreTest {
         Path dbFile = tempDir.resolve("oathbound.db");
         PlayerRef owner = new PlayerRef(UUID.randomUUID());
         AltarLocation location = new AltarLocation(UUID.randomUUID(), 100, 65, -200);
+        Instant consecratedAt = Instant.now().minus(Duration.ofDays(10));
+        Instant sacrificeAt = consecratedAt.plus(Duration.ofDays(1));
         UUID altarId;
 
         SqliteDataStore first = new SqliteDataStore(dbFile);
         first.initialize();
         try {
-            Altar altar = new Altar(UUID.randomUUID(), owner, location, 0L, java.time.Instant.now());
+            Altar altar = new Altar(UUID.randomUUID(), owner, location, consecratedAt);
+            altar.applySacrifice(150L, sacrificeAt, Duration.ofMinutes(5), 150L);
+            altar.setLastKnownTier(AltarVulnerabilityTier.DECAYING);
             altarId = altar.id();
             first.saveAltar(altar);
         } finally {
@@ -218,9 +226,15 @@ final class SqliteDataStoreTest {
         try {
             Optional<Altar> loaded = second.loadAltar(altarId);
             assertTrue(loaded.isPresent());
-            assertEquals(owner, loaded.get().owner());
-            assertEquals(location, loaded.get().location());
-            assertEquals(0L, loaded.get().power());
+            Altar altar = loaded.get();
+            assertEquals(owner, altar.owner());
+            assertEquals(location, altar.location());
+            assertEquals(consecratedAt, altar.consecratedAt());
+            assertEquals(150L, altar.powerBaseline());
+            assertEquals(sacrificeAt, altar.lastSacrificeAt());
+            assertEquals(150L, altar.lastSacrificeValue());
+            assertEquals(sacrificeAt.plus(Duration.ofMinutes(5)), altar.cooldownUntil());
+            assertEquals(AltarVulnerabilityTier.DECAYING, altar.lastKnownTier());
             assertEquals(1, second.loadAllAltars().size());
         } finally {
             second.close();
@@ -321,6 +335,49 @@ final class SqliteDataStoreTest {
 
             second.deleteNotary(notaryId);
             assertTrue(second.loadAllNotaries().isEmpty());
+        } finally {
+            second.close();
+        }
+    }
+
+    @Test
+    void oathBoardRoundTripsAndDeletesAcrossAReopenedConnectionIncludingCapitalScope(@TempDir Path tempDir)
+            throws DataStoreException {
+        Path dbFile = tempDir.resolve("oathbound.db");
+        PlayerRef installer = new PlayerRef(UUID.randomUUID());
+        UUID groupId = UUID.randomUUID();
+        BoardLocation location = new BoardLocation(UUID.randomUUID(), 12, 65, -8);
+        UUID boardId;
+
+        SqliteDataStore first = new SqliteDataStore(dbFile);
+        first.initialize();
+        try {
+            OathBoard board = new OathBoard(UUID.randomUUID(), new ProtectionGroupRef(groupId), location,
+                    installer, Instant.now());
+            boardId = board.id();
+            first.saveOathBoard(board);
+        } finally {
+            first.close();
+        }
+
+        SqliteDataStore second = new SqliteDataStore(dbFile);
+        second.initialize();
+        try {
+            List<OathBoard> loaded = second.loadAllOathBoards();
+            assertEquals(1, loaded.size());
+            assertEquals(new ProtectionGroupRef(groupId), loaded.get(0).regionalGroup());
+            assertEquals(location, loaded.get(0).location());
+            assertEquals(installer, loaded.get(0).installer());
+            assertFalse(loaded.get(0).isCapital());
+
+            OathBoard capital = new OathBoard(boardId, null, location, installer, Instant.now());
+            second.saveOathBoard(capital);
+            List<OathBoard> updated = second.loadAllOathBoards();
+            assertEquals(1, updated.size());
+            assertTrue(updated.get(0).isCapital());
+
+            second.deleteOathBoard(boardId);
+            assertTrue(second.loadAllOathBoards().isEmpty());
         } finally {
             second.close();
         }

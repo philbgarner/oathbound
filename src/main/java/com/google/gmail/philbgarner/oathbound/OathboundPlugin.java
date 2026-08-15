@@ -1,7 +1,10 @@
 package com.google.gmail.philbgarner.oathbound;
 
 import com.google.gmail.philbgarner.oathbound.altar.Altar;
+import com.google.gmail.philbgarner.oathbound.altar.AltarDecaySweepService;
 import com.google.gmail.philbgarner.oathbound.altar.AltarRadiusCalculator;
+import com.google.gmail.philbgarner.oathbound.altar.AltarVulnerabilityTier;
+import com.google.gmail.philbgarner.oathbound.board.OathBoard;
 import com.google.gmail.philbgarner.oathbound.command.OathboundDebugCommand;
 import com.google.gmail.philbgarner.oathbound.command.OathboundNotaryCommand;
 import com.google.gmail.philbgarner.oathbound.command.OathboundOathCommand;
@@ -10,9 +13,15 @@ import com.google.gmail.philbgarner.oathbound.config.OathboundConfig;
 import com.google.gmail.philbgarner.oathbound.contract.TradeOffer;
 import com.google.gmail.philbgarner.oathbound.economy.EconomyService;
 import com.google.gmail.philbgarner.oathbound.economy.PlayerBalance;
+import com.google.gmail.philbgarner.oathbound.group.EntityRef;
+import com.google.gmail.philbgarner.oathbound.group.Member;
 import com.google.gmail.philbgarner.oathbound.group.OwnershipResolver;
+import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
+import com.google.gmail.philbgarner.oathbound.group.ProtectionGroupRef;
+import com.google.gmail.philbgarner.oathbound.gui.AltarSacrificeGuiListener;
 import com.google.gmail.philbgarner.oathbound.gui.NotaryMenuGuiListener;
+import com.google.gmail.philbgarner.oathbound.gui.OathBoardGuiListener;
 import com.google.gmail.philbgarner.oathbound.gui.OathBuilderListener;
 import com.google.gmail.philbgarner.oathbound.gui.TradeGuiListener;
 import com.google.gmail.philbgarner.oathbound.gui.ProtectionLockGuiListener;
@@ -20,10 +29,16 @@ import com.google.gmail.philbgarner.oathbound.honor.HonorCalculator;
 import com.google.gmail.philbgarner.oathbound.honor.HonorService;
 import com.google.gmail.philbgarner.oathbound.honor.PlayerHonor;
 import com.google.gmail.philbgarner.oathbound.listener.AltarConsecrationListener;
+import com.google.gmail.philbgarner.oathbound.listener.AltarDesecrationListener;
+import com.google.gmail.philbgarner.oathbound.listener.AltarInteractListener;
+import com.google.gmail.philbgarner.oathbound.listener.AltarMonsterSpawnGuardListener;
+import com.google.gmail.philbgarner.oathbound.listener.AltarWarningListener;
 import com.google.gmail.philbgarner.oathbound.listener.ClaimBuildGuardListener;
 import com.google.gmail.philbgarner.oathbound.listener.DeathTrackingListener;
 import com.google.gmail.philbgarner.oathbound.listener.HonorLedgerListener;
 import com.google.gmail.philbgarner.oathbound.listener.NotaryInteractListener;
+import com.google.gmail.philbgarner.oathbound.listener.OathBoardBlockListener;
+import com.google.gmail.philbgarner.oathbound.listener.OathBoardBroadcastListener;
 import com.google.gmail.philbgarner.oathbound.listener.OathDraftPromptListener;
 import com.google.gmail.philbgarner.oathbound.listener.ProtectionLockListener;
 import com.google.gmail.philbgarner.oathbound.listener.SealingTableListener;
@@ -75,6 +90,7 @@ public final class OathboundPlugin extends JavaPlugin {
     private HonorService honorService;
     private HonorCalculator honorCalculator;
     private NegotiationExpiryService negotiationExpiryService;
+    private AltarDecaySweepService altarDecaySweepService;
     private OathDraftPromptListener oathDraftPromptListener;
 
     private final Map<UUID, ProtectionGroup> groupCache = new ConcurrentHashMap<>();
@@ -84,6 +100,7 @@ public final class OathboundPlugin extends JavaPlugin {
     private final Map<UUID, EscrowClaim> escrowClaimCache = new ConcurrentHashMap<>();
     private final Map<UUID, Protection> protectionCache = new ConcurrentHashMap<>();
     private final Map<UUID, Notary> notaryCache = new ConcurrentHashMap<>();
+    private final Map<UUID, OathBoard> oathBoardCache = new ConcurrentHashMap<>();
 
     @Override
     public void onEnable() {
@@ -118,6 +135,8 @@ public final class OathboundPlugin extends JavaPlugin {
                 oathboundConfig.honorBreachLossBase(), oathboundConfig.honorBloodOathMultiplier());
         HonorLedgerListener honorLedgerListener = new HonorLedgerListener(this);
         ledger.addListener(honorLedgerListener::onLedgerEntry);
+        OathBoardBroadcastListener oathBoardBroadcastListener = new OathBoardBroadcastListener(this);
+        ledger.addListener(oathBoardBroadcastListener::onLedgerEntry);
 
         deathTracker = new DeathTracker();
         deathTracker.addListener(record -> persistenceExecutor.submit(() -> {
@@ -139,6 +158,7 @@ public final class OathboundPlugin extends JavaPlugin {
                 id -> Optional.ofNullable(groupCache.get(id)), deathTracker, manualConfirmStore);
         escrowExpiryService = new EscrowExpiryService();
         negotiationExpiryService = new NegotiationExpiryService();
+        altarDecaySweepService = new AltarDecaySweepService();
         oathDraftPromptListener = new OathDraftPromptListener(this);
 
         loadExistingState();
@@ -172,6 +192,11 @@ public final class OathboundPlugin extends JavaPlugin {
         }
 
         getServer().getPluginManager().registerEvents(new AltarConsecrationListener(this), this);
+        getServer().getPluginManager().registerEvents(new AltarInteractListener(this), this);
+        getServer().getPluginManager().registerEvents(new AltarDesecrationListener(this), this);
+        getServer().getPluginManager().registerEvents(new AltarMonsterSpawnGuardListener(this), this);
+        getServer().getPluginManager().registerEvents(new AltarWarningListener(this), this);
+        getServer().getPluginManager().registerEvents(new AltarSacrificeGuiListener(this), this);
         getServer().getPluginManager().registerEvents(new TradeGuiListener(this), this);
         getServer().getPluginManager().registerEvents(new OathBuilderListener(this), this);
         getServer().getPluginManager().registerEvents(new DeathTrackingListener(this), this);
@@ -182,6 +207,8 @@ public final class OathboundPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new SealingTableListener(this), this);
         getServer().getPluginManager().registerEvents(new NotaryMenuGuiListener(this), this);
         getServer().getPluginManager().registerEvents(oathDraftPromptListener, this);
+        getServer().getPluginManager().registerEvents(new OathBoardBlockListener(this), this);
+        getServer().getPluginManager().registerEvents(new OathBoardGuiListener(this), this);
 
         getServer().getScheduler().runTaskTimer(this, this::runConditionEngineTick, 100L, 100L);
 
@@ -219,6 +246,43 @@ public final class OathboundPlugin extends JavaPlugin {
             }
         } catch (RuntimeException e) {
             getLogger().log(Level.SEVERE, "Negotiation expiry sweep failed", e);
+        }
+        try {
+            List<AltarDecaySweepService.TierCrossing> crossings = altarDecaySweepService.sweep(
+                    altarCache.values(), now, oathboundConfig.altarDecayDays(),
+                    oathboundConfig.altarCriticalThreshold(), oathboundConfig.altarDecayingThreshold());
+            for (AltarDecaySweepService.TierCrossing crossing : crossings) {
+                persistAltarAsync(crossing.altar());
+                if (crossing.to() == AltarVulnerabilityTier.DECAYING || crossing.to() == AltarVulnerabilityTier.CRITICAL) {
+                    notifyAltarOwnersIfOnline(crossing.altar(), crossing.to());
+                }
+            }
+        } catch (RuntimeException e) {
+            getLogger().log(Level.SEVERE, "Altar decay sweep failed", e);
+        }
+    }
+
+    private void notifyAltarOwnersIfOnline(Altar altar, AltarVulnerabilityTier tier) {
+        String message = tier == AltarVulnerabilityTier.CRITICAL
+                ? "One of your altars has gone CRITICAL - it is fully raidable until topped up again!"
+                : "...the sacrifice grows cold at one of your altars...";
+        EntityRef owner = altar.owner();
+        if (owner instanceof PlayerRef playerRef) {
+            Player player = Bukkit.getPlayer(playerRef.playerId());
+            if (player != null) {
+                player.sendMessage(message);
+            }
+        } else if (owner instanceof ProtectionGroupRef groupRef) {
+            ProtectionGroup group = groupCache.get(groupRef.groupId());
+            if (group == null) {
+                return;
+            }
+            for (Member member : group.members()) {
+                Player player = Bukkit.getPlayer(member.player().playerId());
+                if (player != null) {
+                    player.sendMessage(message);
+                }
+            }
         }
     }
 
@@ -279,11 +343,14 @@ public final class OathboundPlugin extends JavaPlugin {
             for (Notary notary : dataStore.loadAllNotaries()) {
                 notaryCache.put(notary.id(), notary);
             }
+            for (OathBoard board : dataStore.loadAllOathBoards()) {
+                oathBoardCache.put(board.id(), board);
+            }
             getLogger().info("Loaded " + groupCache.size() + " group(s), " + oathCache.size() + " oath(s), "
                     + altarCache.size() + " altar(s), " + tradeOfferCache.size() + " trade offer(s), "
                     + deathRecordCount + " death record(s), " + escrowClaimCache.size() + " escrow claim(s), "
                     + protectionCache.size() + " protection(s), " + honorCount + " honor record(s), "
-                    + notaryCache.size() + " notary/notaries from storage.");
+                    + notaryCache.size() + " notary/notaries, " + oathBoardCache.size() + " oath board(s) from storage.");
         } catch (DataStoreException e) {
             getLogger().log(Level.SEVERE, "Failed to load persisted state", e);
         }
@@ -325,6 +392,16 @@ public final class OathboundPlugin extends JavaPlugin {
                 dataStore.saveAltar(altar);
             } catch (DataStoreException e) {
                 getLogger().log(Level.SEVERE, "Failed to persist altar " + altar.id(), e);
+            }
+        });
+    }
+
+    public void deleteAltarAsync(UUID altarId) {
+        persistenceExecutor.submit(() -> {
+            try {
+                dataStore.deleteAltar(altarId);
+            } catch (DataStoreException e) {
+                getLogger().log(Level.SEVERE, "Failed to delete altar " + altarId, e);
             }
         });
     }
@@ -399,6 +476,26 @@ public final class OathboundPlugin extends JavaPlugin {
         });
     }
 
+    public void persistOathBoardAsync(OathBoard board) {
+        persistenceExecutor.submit(() -> {
+            try {
+                dataStore.saveOathBoard(board);
+            } catch (DataStoreException e) {
+                getLogger().log(Level.SEVERE, "Failed to persist oath board " + board.id(), e);
+            }
+        });
+    }
+
+    public void deleteOathBoardAsync(UUID id) {
+        persistenceExecutor.submit(() -> {
+            try {
+                dataStore.deleteOathBoard(id);
+            } catch (DataStoreException e) {
+                getLogger().log(Level.SEVERE, "Failed to delete oath board " + id, e);
+            }
+        });
+    }
+
     public OathboundConfig oathboundConfig() {
         return oathboundConfig;
     }
@@ -469,5 +566,9 @@ public final class OathboundPlugin extends JavaPlugin {
 
     public OathDraftPromptListener oathDraftPromptListener() {
         return oathDraftPromptListener;
+    }
+
+    public Map<UUID, OathBoard> oathBoardCache() {
+        return oathBoardCache;
     }
 }

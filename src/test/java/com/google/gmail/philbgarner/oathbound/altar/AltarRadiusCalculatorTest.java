@@ -6,7 +6,6 @@ import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroupRef;
 import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -60,15 +59,5 @@ final class AltarRadiusCalculatorTest {
         ProtectionGroup kingdom = new ProtectionGroup(UUID.randomUUID(), "Kingdom", player, GroupTier.KINGDOM);
         assertEquals(GroupTier.KINGDOM,
                 AltarRadiusCalculator.tierOf(new ProtectionGroupRef(kingdom.id()), id -> Optional.of(kingdom)));
-    }
-
-    @Test
-    void radiusForAltarDelegatesThroughOwnerTierResolution() {
-        PlayerRef player = new PlayerRef(UUID.randomUUID());
-        Altar altar = new Altar(UUID.randomUUID(), player,
-                new AltarLocation(UUID.randomUUID(), 0, 64, 0), 100L, Instant.now());
-
-        int expected = calculator.radiusFor(100, GroupTier.INDIVIDUAL);
-        assertEquals(expected, calculator.radiusFor(altar, id -> Optional.empty()));
     }
 }

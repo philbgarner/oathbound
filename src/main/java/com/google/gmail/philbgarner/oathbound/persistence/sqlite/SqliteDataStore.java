@@ -1,6 +1,7 @@
 package com.google.gmail.philbgarner.oathbound.persistence.sqlite;
 
 import com.google.gmail.philbgarner.oathbound.altar.Altar;
+import com.google.gmail.philbgarner.oathbound.board.OathBoard;
 import com.google.gmail.philbgarner.oathbound.contract.TradeOffer;
 import com.google.gmail.philbgarner.oathbound.economy.Currency;
 import com.google.gmail.philbgarner.oathbound.economy.PlayerBalance;
@@ -50,7 +51,8 @@ public final class SqliteDataStore implements DataStore {
             "db/migrations/0005_escrow_claims.sql",
             "db/migrations/0006_protections.sql",
             "db/migrations/0007_honor.sql",
-            "db/migrations/0008_notaries.sql"
+            "db/migrations/0008_notaries.sql",
+            "db/migrations/0009_oath_boards.sql"
     );
 
     private final Path databaseFile;
@@ -584,6 +586,43 @@ public final class SqliteDataStore implements DataStore {
             stmt.executeUpdate();
         } catch (SQLException e) {
             throw new DataStoreException("Failed to delete notary " + id, e);
+        }
+    }
+
+    @Override
+    public synchronized void saveOathBoard(OathBoard board) throws DataStoreException {
+        String json = gson.toJson(board);
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "INSERT INTO oath_boards(id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data")) {
+            stmt.setString(1, board.id().toString());
+            stmt.setString(2, json);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to save oath board " + board.id(), e);
+        }
+    }
+
+    @Override
+    public synchronized List<OathBoard> loadAllOathBoards() throws DataStoreException {
+        List<OathBoard> result = new ArrayList<>();
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT data FROM oath_boards")) {
+            while (rs.next()) {
+                result.add(gson.fromJson(rs.getString(1), OathBoard.class));
+            }
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to load all oath boards", e);
+        }
+        return result;
+    }
+
+    @Override
+    public synchronized void deleteOathBoard(UUID id) throws DataStoreException {
+        try (PreparedStatement stmt = connection.prepareStatement("DELETE FROM oath_boards WHERE id = ?")) {
+            stmt.setString(1, id.toString());
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to delete oath board " + id, e);
         }
     }
 }

@@ -36,6 +36,15 @@ public final class OathboundConfig {
     private final Material altarCapstoneMaterial;
     private final double altarPowerRadiusScale;
     private final Map<GroupTier, Double> altarTierRadiusMultipliers;
+    private final int altarDecayDays;
+    private final long altarCriticalThreshold;
+    private final long altarDecayingThreshold;
+    private final double altarXpLootConversionRate;
+    private final Duration altarReconsecrationCooldown;
+    private final double altarEnchantmentWeightScale;
+    private final double altarRepeatEnchantmentDecay;
+    private final long altarDesecrationHonorPenalty;
+    private final long altarLootHonorPenalty;
     private final Duration escrowClaimExpiry;
     private final Material protectionLockToolMaterial;
     private final long honorFulfillGainBase;
@@ -49,22 +58,38 @@ public final class OathboundConfig {
     private final Material sealingTableMaterial;
     private final int notaryPendingOfferCap;
     private final Duration notaryNegotiationExpiry;
+    private final Material oathBoardMaterial;
+    private final int oathBoardFeedSize;
 
     private OathboundConfig(Path sqliteFile, int resolverDepthCutoff, List<Currency> currencies,
                              Material altarCapstoneMaterial, double altarPowerRadiusScale,
-                             Map<GroupTier, Double> altarTierRadiusMultipliers, Duration escrowClaimExpiry,
+                             Map<GroupTier, Double> altarTierRadiusMultipliers, int altarDecayDays,
+                             long altarCriticalThreshold, long altarDecayingThreshold,
+                             double altarXpLootConversionRate, Duration altarReconsecrationCooldown,
+                             double altarEnchantmentWeightScale, double altarRepeatEnchantmentDecay,
+                             long altarDesecrationHonorPenalty, long altarLootHonorPenalty,
+                             Duration escrowClaimExpiry,
                              Material protectionLockToolMaterial, long honorFulfillGainBase,
                              long honorBreachLossBase, double honorBloodOathMultiplier, long honorMinForBloodOath,
                              HonorTiers honorTiers, PotionEffectType honorBloodOathBreachDebuffEffect,
                              Duration honorBloodOathBreachDebuffDuration, int honorBloodOathBreachDebuffAmplifier,
                              Material sealingTableMaterial, int notaryPendingOfferCap,
-                             Duration notaryNegotiationExpiry) {
+                             Duration notaryNegotiationExpiry, Material oathBoardMaterial, int oathBoardFeedSize) {
         this.sqliteFile = sqliteFile;
         this.resolverDepthCutoff = resolverDepthCutoff;
         this.currencies = currencies;
         this.altarCapstoneMaterial = altarCapstoneMaterial;
         this.altarPowerRadiusScale = altarPowerRadiusScale;
         this.altarTierRadiusMultipliers = altarTierRadiusMultipliers;
+        this.altarDecayDays = altarDecayDays;
+        this.altarCriticalThreshold = altarCriticalThreshold;
+        this.altarDecayingThreshold = altarDecayingThreshold;
+        this.altarXpLootConversionRate = altarXpLootConversionRate;
+        this.altarReconsecrationCooldown = altarReconsecrationCooldown;
+        this.altarEnchantmentWeightScale = altarEnchantmentWeightScale;
+        this.altarRepeatEnchantmentDecay = altarRepeatEnchantmentDecay;
+        this.altarDesecrationHonorPenalty = altarDesecrationHonorPenalty;
+        this.altarLootHonorPenalty = altarLootHonorPenalty;
         this.escrowClaimExpiry = escrowClaimExpiry;
         this.protectionLockToolMaterial = protectionLockToolMaterial;
         this.honorFulfillGainBase = honorFulfillGainBase;
@@ -78,6 +103,8 @@ public final class OathboundConfig {
         this.sealingTableMaterial = sealingTableMaterial;
         this.notaryPendingOfferCap = notaryPendingOfferCap;
         this.notaryNegotiationExpiry = notaryNegotiationExpiry;
+        this.oathBoardMaterial = oathBoardMaterial;
+        this.oathBoardFeedSize = oathBoardFeedSize;
     }
 
     public static OathboundConfig load(FileConfiguration config, Path dataFolder) {
@@ -107,6 +134,17 @@ public final class OathboundConfig {
                 tierMultipliers.put(GroupTier.valueOf(key.toUpperCase()), tierSection.getDouble(key));
             }
         }
+
+        int altarDecayDays = config.getInt("altar.decay-days", 5);
+        long altarCriticalThreshold = config.getLong("altar.critical-threshold", 10L);
+        long altarDecayingThreshold = config.getLong("altar.decaying-threshold", 100L);
+        double altarXpLootConversionRate = config.getDouble("altar.xp-loot-conversion-rate", 1.0);
+        int altarReconsecrationCooldownSeconds = config.getInt("altar.reconsecration-cooldown-seconds", 300);
+        Duration altarReconsecrationCooldown = Duration.ofSeconds(altarReconsecrationCooldownSeconds);
+        double altarEnchantmentWeightScale = config.getDouble("altar.enchantment-weight-scale", 10.0);
+        double altarRepeatEnchantmentDecay = config.getDouble("altar.repeat-enchantment-decay", 0.5);
+        long altarDesecrationHonorPenalty = config.getLong("altar.desecration-honor-penalty", 50L);
+        long altarLootHonorPenalty = config.getLong("altar.loot-honor-penalty", 0L);
 
         int escrowClaimExpiryDays = config.getInt("escrow.claim-expiry-days", 30);
         Duration escrowClaimExpiry = Duration.ofDays(escrowClaimExpiryDays);
@@ -157,11 +195,22 @@ public final class OathboundConfig {
         int notaryNegotiationExpiryDays = config.getInt("notary.negotiation-expiry-days", 7);
         Duration notaryNegotiationExpiry = Duration.ofDays(notaryNegotiationExpiryDays);
 
+        String oathBoardMaterialName = config.getString("oath-board.material", "OAK_SIGN");
+        Material oathBoardMaterial = Material.matchMaterial(oathBoardMaterialName);
+        if (oathBoardMaterial == null) {
+            throw new IllegalArgumentException("Unknown oath-board.material: " + oathBoardMaterialName);
+        }
+        int oathBoardFeedSize = config.getInt("oath-board.feed-size", 50);
+
         return new OathboundConfig(dataFolder.resolve(sqliteFileName), depthCutoff, currencies,
-                capstoneMaterial, powerRadiusScale, Map.copyOf(tierMultipliers), escrowClaimExpiry,
+                capstoneMaterial, powerRadiusScale, Map.copyOf(tierMultipliers),
+                altarDecayDays, altarCriticalThreshold, altarDecayingThreshold, altarXpLootConversionRate,
+                altarReconsecrationCooldown, altarEnchantmentWeightScale, altarRepeatEnchantmentDecay,
+                altarDesecrationHonorPenalty, altarLootHonorPenalty, escrowClaimExpiry,
                 lockToolMaterial, fulfillGainBase, breachLossBase, bloodOathMultiplier, minForBloodOath,
                 honorTiers, debuffEffect, debuffDuration, debuffAmplifier,
-                sealingTableMaterial, notaryPendingOfferCap, notaryNegotiationExpiry);
+                sealingTableMaterial, notaryPendingOfferCap, notaryNegotiationExpiry,
+                oathBoardMaterial, oathBoardFeedSize);
     }
 
     public Path sqliteFile() {
@@ -186,6 +235,42 @@ public final class OathboundConfig {
 
     public Map<GroupTier, Double> altarTierRadiusMultipliers() {
         return altarTierRadiusMultipliers;
+    }
+
+    public int altarDecayDays() {
+        return altarDecayDays;
+    }
+
+    public long altarCriticalThreshold() {
+        return altarCriticalThreshold;
+    }
+
+    public long altarDecayingThreshold() {
+        return altarDecayingThreshold;
+    }
+
+    public double altarXpLootConversionRate() {
+        return altarXpLootConversionRate;
+    }
+
+    public Duration altarReconsecrationCooldown() {
+        return altarReconsecrationCooldown;
+    }
+
+    public double altarEnchantmentWeightScale() {
+        return altarEnchantmentWeightScale;
+    }
+
+    public double altarRepeatEnchantmentDecay() {
+        return altarRepeatEnchantmentDecay;
+    }
+
+    public long altarDesecrationHonorPenalty() {
+        return altarDesecrationHonorPenalty;
+    }
+
+    public long altarLootHonorPenalty() {
+        return altarLootHonorPenalty;
     }
 
     public Duration escrowClaimExpiry() {
@@ -238,5 +323,13 @@ public final class OathboundConfig {
 
     public Duration notaryNegotiationExpiry() {
         return notaryNegotiationExpiry;
+    }
+
+    public Material oathBoardMaterial() {
+        return oathBoardMaterial;
+    }
+
+    public int oathBoardFeedSize() {
+        return oathBoardFeedSize;
     }
 }
