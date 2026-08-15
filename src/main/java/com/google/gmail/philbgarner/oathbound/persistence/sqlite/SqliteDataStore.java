@@ -17,6 +17,7 @@ import com.google.gmail.philbgarner.oathbound.persistence.dto.GroupDto;
 import com.google.gmail.philbgarner.oathbound.persistence.dto.OathDto;
 import com.google.gmail.philbgarner.oathbound.persistence.dto.TradeOfferDto;
 import com.google.gmail.philbgarner.oathbound.persistence.json.GsonFactory;
+import com.google.gmail.philbgarner.oathbound.protection.Protection;
 import com.google.gson.Gson;
 
 import java.io.IOException;
@@ -44,7 +45,8 @@ public final class SqliteDataStore implements DataStore {
             "db/migrations/0002_altars.sql",
             "db/migrations/0003_trade_offers.sql",
             "db/migrations/0004_death_records.sql",
-            "db/migrations/0005_escrow_claims.sql"
+            "db/migrations/0005_escrow_claims.sql",
+            "db/migrations/0006_protections.sql"
     );
 
     private final Path databaseFile;
@@ -477,5 +479,42 @@ public final class SqliteDataStore implements DataStore {
             throw new DataStoreException("Failed to load all escrow claims", e);
         }
         return result;
+    }
+
+    @Override
+    public synchronized void saveProtection(Protection protection) throws DataStoreException {
+        String json = gson.toJson(protection);
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "INSERT INTO protections(id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data")) {
+            stmt.setString(1, protection.id().toString());
+            stmt.setString(2, json);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to save protection " + protection.id(), e);
+        }
+    }
+
+    @Override
+    public synchronized List<Protection> loadAllProtections() throws DataStoreException {
+        List<Protection> result = new ArrayList<>();
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT data FROM protections")) {
+            while (rs.next()) {
+                result.add(gson.fromJson(rs.getString(1), Protection.class));
+            }
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to load all protections", e);
+        }
+        return result;
+    }
+
+    @Override
+    public synchronized void deleteProtection(UUID id) throws DataStoreException {
+        try (PreparedStatement stmt = connection.prepareStatement("DELETE FROM protections WHERE id = ?")) {
+            stmt.setString(1, id.toString());
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to delete protection " + id, e);
+        }
     }
 }

@@ -34,10 +34,12 @@ public final class OathboundConfig {
     private final double altarPowerRadiusScale;
     private final Map<GroupTier, Double> altarTierRadiusMultipliers;
     private final Duration escrowClaimExpiry;
+    private final Material protectionLockToolMaterial;
 
     private OathboundConfig(Path sqliteFile, int resolverDepthCutoff, List<Currency> currencies,
                              Material altarCapstoneMaterial, double altarPowerRadiusScale,
-                             Map<GroupTier, Double> altarTierRadiusMultipliers, Duration escrowClaimExpiry) {
+                             Map<GroupTier, Double> altarTierRadiusMultipliers, Duration escrowClaimExpiry,
+                             Material protectionLockToolMaterial) {
         this.sqliteFile = sqliteFile;
         this.resolverDepthCutoff = resolverDepthCutoff;
         this.currencies = currencies;
@@ -45,6 +47,7 @@ public final class OathboundConfig {
         this.altarPowerRadiusScale = altarPowerRadiusScale;
         this.altarTierRadiusMultipliers = altarTierRadiusMultipliers;
         this.escrowClaimExpiry = escrowClaimExpiry;
+        this.protectionLockToolMaterial = protectionLockToolMaterial;
     }
 
     public static OathboundConfig load(FileConfiguration config, Path dataFolder) {
@@ -78,8 +81,15 @@ public final class OathboundConfig {
         int escrowClaimExpiryDays = config.getInt("escrow.claim-expiry-days", 30);
         Duration escrowClaimExpiry = Duration.ofDays(escrowClaimExpiryDays);
 
+        String lockToolName = config.getString("protection.lock-tool-material", "TRIPWIRE_HOOK");
+        Material lockToolMaterial = Material.matchMaterial(lockToolName);
+        if (lockToolMaterial == null) {
+            throw new IllegalArgumentException("Unknown protection.lock-tool-material: " + lockToolName);
+        }
+
         return new OathboundConfig(dataFolder.resolve(sqliteFileName), depthCutoff, currencies,
-                capstoneMaterial, powerRadiusScale, Map.copyOf(tierMultipliers), escrowClaimExpiry);
+                capstoneMaterial, powerRadiusScale, Map.copyOf(tierMultipliers), escrowClaimExpiry,
+                lockToolMaterial);
     }
 
     public Path sqliteFile() {
@@ -108,5 +118,9 @@ public final class OathboundConfig {
 
     public Duration escrowClaimExpiry() {
         return escrowClaimExpiry;
+    }
+
+    public Material protectionLockToolMaterial() {
+        return protectionLockToolMaterial;
     }
 }

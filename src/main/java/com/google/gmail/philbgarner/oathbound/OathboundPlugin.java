@@ -13,8 +13,11 @@ import com.google.gmail.philbgarner.oathbound.group.OwnershipResolver;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
 import com.google.gmail.philbgarner.oathbound.gui.OathBuilderListener;
 import com.google.gmail.philbgarner.oathbound.gui.TradeGuiListener;
+import com.google.gmail.philbgarner.oathbound.gui.ProtectionLockGuiListener;
 import com.google.gmail.philbgarner.oathbound.listener.AltarConsecrationListener;
+import com.google.gmail.philbgarner.oathbound.listener.ClaimBuildGuardListener;
 import com.google.gmail.philbgarner.oathbound.listener.DeathTrackingListener;
+import com.google.gmail.philbgarner.oathbound.listener.ProtectionLockListener;
 import com.google.gmail.philbgarner.oathbound.oath.ConditionEngine;
 import com.google.gmail.philbgarner.oathbound.oath.DeathTracker;
 import com.google.gmail.philbgarner.oathbound.oath.EscrowClaim;
@@ -26,6 +29,7 @@ import com.google.gmail.philbgarner.oathbound.oath.OathService;
 import com.google.gmail.philbgarner.oathbound.persistence.DataStore;
 import com.google.gmail.philbgarner.oathbound.persistence.DataStoreException;
 import com.google.gmail.philbgarner.oathbound.persistence.sqlite.SqliteDataStore;
+import com.google.gmail.philbgarner.oathbound.protection.Protection;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -61,6 +65,7 @@ public final class OathboundPlugin extends JavaPlugin {
     private final Map<UUID, Altar> altarCache = new ConcurrentHashMap<>();
     private final Map<UUID, TradeOffer> tradeOfferCache = new ConcurrentHashMap<>();
     private final Map<UUID, EscrowClaim> escrowClaimCache = new ConcurrentHashMap<>();
+    private final Map<UUID, Protection> protectionCache = new ConcurrentHashMap<>();
 
     @Override
     public void onEnable() {
@@ -138,6 +143,9 @@ public final class OathboundPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new TradeGuiListener(this), this);
         getServer().getPluginManager().registerEvents(new OathBuilderListener(this), this);
         getServer().getPluginManager().registerEvents(new DeathTrackingListener(this), this);
+        getServer().getPluginManager().registerEvents(new ProtectionLockListener(this), this);
+        getServer().getPluginManager().registerEvents(new ProtectionLockGuiListener(this), this);
+        getServer().getPluginManager().registerEvents(new ClaimBuildGuardListener(this), this);
 
         getServer().getScheduler().runTaskTimer(this, this::runConditionEngineTick, 100L, 100L);
 
@@ -211,9 +219,13 @@ public final class OathboundPlugin extends JavaPlugin {
             for (EscrowClaim claim : dataStore.loadAllEscrowClaims()) {
                 escrowClaimCache.put(claim.id(), claim);
             }
+            for (Protection protection : dataStore.loadAllProtections()) {
+                protectionCache.put(protection.id(), protection);
+            }
             getLogger().info("Loaded " + groupCache.size() + " group(s), " + oathCache.size() + " oath(s), "
                     + altarCache.size() + " altar(s), " + tradeOfferCache.size() + " trade offer(s), "
-                    + deathRecordCount + " death record(s), " + escrowClaimCache.size() + " escrow claim(s) from storage.");
+                    + deathRecordCount + " death record(s), " + escrowClaimCache.size() + " escrow claim(s), "
+                    + protectionCache.size() + " protection(s) from storage.");
         } catch (DataStoreException e) {
             getLogger().log(Level.SEVERE, "Failed to load persisted state", e);
         }
@@ -279,6 +291,26 @@ public final class OathboundPlugin extends JavaPlugin {
         });
     }
 
+    public void persistProtectionAsync(Protection protection) {
+        persistenceExecutor.submit(() -> {
+            try {
+                dataStore.saveProtection(protection);
+            } catch (DataStoreException e) {
+                getLogger().log(Level.SEVERE, "Failed to persist protection " + protection.id(), e);
+            }
+        });
+    }
+
+    public void deleteProtectionAsync(UUID id) {
+        persistenceExecutor.submit(() -> {
+            try {
+                dataStore.deleteProtection(id);
+            } catch (DataStoreException e) {
+                getLogger().log(Level.SEVERE, "Failed to delete protection " + id, e);
+            }
+        });
+    }
+
     public OathboundConfig oathboundConfig() {
         return oathboundConfig;
     }
@@ -329,5 +361,9 @@ public final class OathboundPlugin extends JavaPlugin {
 
     public Map<UUID, EscrowClaim> escrowClaimCache() {
         return escrowClaimCache;
+    }
+
+    public Map<UUID, Protection> protectionCache() {
+        return protectionCache;
     }
 }

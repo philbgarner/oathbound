@@ -24,6 +24,9 @@ import com.google.gmail.philbgarner.oathbound.oath.OathService;
 import com.google.gmail.philbgarner.oathbound.oath.OathState;
 import com.google.gmail.philbgarner.oathbound.oath.SerializedItemStack;
 import com.google.gmail.philbgarner.oathbound.persistence.DataStoreException;
+import com.google.gmail.philbgarner.oathbound.protection.ProtectedLocation;
+import com.google.gmail.philbgarner.oathbound.protection.Protection;
+import com.google.gmail.philbgarner.oathbound.protection.ProtectionType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -216,6 +219,40 @@ final class SqliteDataStoreTest {
             assertEquals(location, loaded.get().location());
             assertEquals(0L, loaded.get().power());
             assertEquals(1, second.loadAllAltars().size());
+        } finally {
+            second.close();
+        }
+    }
+
+    @Test
+    void protectionRoundTripsAndDeletesAcrossAReopenedConnection(@TempDir Path tempDir) throws DataStoreException {
+        Path dbFile = tempDir.resolve("oathbound.db");
+        UUID groupId = UUID.randomUUID();
+        ProtectedLocation location = new ProtectedLocation(UUID.randomUUID(), 10, 65, -30);
+        UUID protectionId;
+
+        SqliteDataStore first = new SqliteDataStore(dbFile);
+        first.initialize();
+        try {
+            Protection protection = new Protection(UUID.randomUUID(), location, ProtectionType.DOOR,
+                    new ProtectionGroupRef(groupId), Instant.now());
+            protectionId = protection.id();
+            first.saveProtection(protection);
+        } finally {
+            first.close();
+        }
+
+        SqliteDataStore second = new SqliteDataStore(dbFile);
+        second.initialize();
+        try {
+            List<Protection> loaded = second.loadAllProtections();
+            assertEquals(1, loaded.size());
+            assertEquals(location, loaded.get(0).location());
+            assertEquals(ProtectionType.DOOR, loaded.get(0).type());
+            assertEquals(new ProtectionGroupRef(groupId), loaded.get(0).group());
+
+            second.deleteProtection(protectionId);
+            assertTrue(second.loadAllProtections().isEmpty());
         } finally {
             second.close();
         }

@@ -8,6 +8,7 @@ import com.google.gmail.philbgarner.oathbound.oath.DeathRecord;
 import com.google.gmail.philbgarner.oathbound.oath.EscrowClaim;
 import com.google.gmail.philbgarner.oathbound.oath.LedgerEntry;
 import com.google.gmail.philbgarner.oathbound.oath.Oath;
+import com.google.gmail.philbgarner.oathbound.protection.Protection;
 
 import java.util.List;
 import java.util.Optional;
@@ -71,4 +72,10 @@ public interface DataStore {
     void saveEscrowClaim(EscrowClaim claim) throws DataStoreException;
 
     List<EscrowClaim> loadAllEscrowClaims() throws DataStoreException;
+
+    void saveProtection(Protection protection) throws DataStoreException;
+
+    List<Protection> loadAllProtections() throws DataStoreException;
+
+    void deleteProtection(UUID id) throws DataStoreException;
 }

@@ -32,3 +32,9 @@ altar:
     TOWN: 1.5
     REGION: 2.0
     KINGDOM: 3.0
+
+protection:
+  # Item that must be held to lock/unlock a chest or door - right-click the block while holding
+  # this item to open the group picker. Any other item (or empty hand) is a normal interaction,
+  # gated by whatever ProtectionGroup the block is already locked to (if any).
+  lock-tool-material: TRIPWIRE_HOOK

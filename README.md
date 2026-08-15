@@ -326,9 +326,14 @@ altar:
     TOWN: 1.5
     REGION: 2.0
     KINGDOM: 3.0
+
+protection:
+  # Item that must be held to lock/unlock a chest or door - right-click the block while holding
+  # this item to open the group picker.
+  lock-tool-material: TRIPWIRE_HOOK
 ```
 
-`capstone-material` accepts any valid Bukkit `Material` name.
+`capstone-material` and `lock-tool-material` accept any valid Bukkit `Material` name.
 
 ---
 
@@ -369,9 +374,19 @@ Tracking against the [master design plan](./oathbound-master-plan.md)'s build or
       breach-split abandonment policies aren't implemented (no Notary or breach-split system exists yet)
       — "return to depositor" is the only policy for now.
 
+- [x] Chest/door/claim access gating tied to `ProtectionGroup` — hold a configurable item (a
+      tripwire hook by default) and right-click a chest or door to open a chest-menu GUI listing every
+      group you're allowed to lock it to (you must already hold that group's `OPEN_CONTAINERS`/
+      `OPEN_DOORS` permission to lock a new block to it); a locked block then denies interaction to
+      anyone without that permission on the bound group. Separately, block break/place inside any
+      Altar's live claim radius is gated by a new `BUILD` permission on the altar's owning group (or,
+      for a player-owned altar, that specific player) — reuses the existing `AltarRadiusCalculator`
+      rather than building a second territory system. This is functionally inert in real play until
+      Altar Power/sacrifice exists (radius is always 0 today), but activates automatically once that
+      lands.
+
 ### Not yet built
 
-- [ ] Chest/door/claim access gating tied to `ProtectionGroup`
 - [ ] Honor/reputation system + Blood Oath tier
 - [ ] NPC Notary (rooted villager) + Sealing Table, and the async offer/counter-offer negotiation
       mailbox
