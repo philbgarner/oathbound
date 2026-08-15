@@ -13,6 +13,7 @@ import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroupRef;
 import com.google.gmail.philbgarner.oathbound.group.Role;
+import com.google.gmail.philbgarner.oathbound.honor.PlayerHonor;
 import com.google.gmail.philbgarner.oathbound.oath.Clause;
 import com.google.gmail.philbgarner.oathbound.oath.Condition;
 import com.google.gmail.philbgarner.oathbound.oath.DeathRecord;
@@ -253,6 +254,36 @@ final class SqliteDataStoreTest {
 
             second.deleteProtection(protectionId);
             assertTrue(second.loadAllProtections().isEmpty());
+        } finally {
+            second.close();
+        }
+    }
+
+    @Test
+    void honorRoundTripsAndUpdatesAcrossAReopenedConnection(@TempDir Path tempDir) throws DataStoreException {
+        Path dbFile = tempDir.resolve("oathbound.db");
+        PlayerRef player = new PlayerRef(UUID.randomUUID());
+
+        SqliteDataStore first = new SqliteDataStore(dbFile);
+        first.initialize();
+        try {
+            first.saveHonor(new PlayerHonor(player, -15L));
+        } finally {
+            first.close();
+        }
+
+        SqliteDataStore second = new SqliteDataStore(dbFile);
+        second.initialize();
+        try {
+            List<PlayerHonor> loaded = second.loadAllHonor();
+            assertEquals(1, loaded.size());
+            assertEquals(player, loaded.get(0).player());
+            assertEquals(-15L, loaded.get(0).value());
+
+            second.saveHonor(new PlayerHonor(player, 30L));
+            List<PlayerHonor> updated = second.loadAllHonor();
+            assertEquals(1, updated.size());
+            assertEquals(30L, updated.get(0).value());
         } finally {
             second.close();
         }

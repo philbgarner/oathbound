@@ -12,6 +12,7 @@ import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroupRef;
 import com.google.gmail.philbgarner.oathbound.group.Role;
+import com.google.gmail.philbgarner.oathbound.honor.PlayerHonor;
 import com.google.gmail.philbgarner.oathbound.oath.Clause;
 import com.google.gmail.philbgarner.oathbound.oath.LedgerEntry;
 import com.google.gmail.philbgarner.oathbound.oath.Oath;
@@ -35,11 +36,12 @@ import java.util.stream.Collectors;
 /** Minimal command surface to exercise the Phase 1 domain layer in-game before any GUI exists. */
 public final class OathboundDebugCommand implements CommandExecutor, TabCompleter {
 
-    private static final List<String> TOP_LEVEL = List.of("group", "oath", "ledger", "altar");
+    private static final List<String> TOP_LEVEL = List.of("group", "oath", "ledger", "altar", "honor");
     private static final List<String> GROUP_SUB = List.of("create", "transfer", "info", "list");
     private static final List<String> OATH_SUB = List.of("create", "addflag", "confirm", "propose", "seal",
             "activate", "fulfill", "breach", "void", "info", "list");
     private static final List<String> ALTAR_SUB = List.of("list", "info");
+    private static final List<String> HONOR_SUB = List.of("info", "adjust");
 
     private final OathboundPlugin plugin;
 
@@ -54,7 +56,7 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
             return true;
         }
         if (args.length == 0) {
-            sender.sendMessage("Usage: /" + label + " <group|oath|ledger|altar> ...");
+            sender.sendMessage("Usage: /" + label + " <group|oath|ledger|altar|honor> ...");
             return true;
         }
         try {
@@ -63,6 +65,7 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
                 case "oath" -> handleOath(player, args);
                 case "ledger" -> handleLedger(player, args);
                 case "altar" -> handleAltar(player, args);
+                case "honor" -> handleHonor(player, args);
                 default -> sender.sendMessage("Unknown top-level command: " + args[0]);
             }
         } catch (OathTransitionException e) {
@@ -362,6 +365,47 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
         sender.sendMessage("  consecratedAt=" + a.consecratedAt());
     }
 
+    // ---- honor ----
+
+    private void handleHonor(Player sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage("Usage: /oathbound-debug honor <info|adjust> ...");
+            return;
+        }
+        switch (args[1].toLowerCase()) {
+            case "info" -> honorInfo(sender, args);
+            case "adjust" -> honorAdjust(sender, args);
+            default -> sender.sendMessage("Unknown honor subcommand: " + args[1]);
+        }
+    }
+
+    private void honorInfo(Player sender, String[] args) {
+        OfflinePlayer target = args.length >= 3 ? Bukkit.getOfflinePlayer(args[2]) : sender;
+        PlayerRef targetRef = new PlayerRef(target.getUniqueId());
+        long honor = plugin.honorService().honor(targetRef);
+        String title = plugin.oathboundConfig().honorTiers().titleFor(honor);
+        sender.sendMessage((args.length >= 3 ? args[2] : sender.getName()) + " has " + honor + " honor (" + title + ").");
+    }
+
+    private void honorAdjust(Player sender, String[] args) {
+        if (args.length < 4) {
+            sender.sendMessage("Usage: /oathbound-debug honor adjust <player> <delta>");
+            return;
+        }
+        OfflinePlayer target = Bukkit.getOfflinePlayer(args[2]);
+        long delta;
+        try {
+            delta = Long.parseLong(args[3]);
+        } catch (NumberFormatException e) {
+            sender.sendMessage("Delta must be a whole number: " + args[3]);
+            return;
+        }
+        PlayerRef targetRef = new PlayerRef(target.getUniqueId());
+        long newHonor = plugin.honorService().adjust(targetRef, delta);
+        plugin.persistHonorAsync(new PlayerHonor(targetRef, newHonor));
+        sender.sendMessage(args[2] + " now has " + newHonor + " honor.");
+    }
+
     // ---- lookups ----
 
     private Optional<Altar> findAltar(String idString) {
@@ -398,6 +442,7 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
                 case "group" -> filter(GROUP_SUB, args[1]);
                 case "oath" -> filter(OATH_SUB, args[1]);
                 case "altar" -> filter(ALTAR_SUB, args[1]);
+                case "honor" -> filter(HONOR_SUB, args[1]);
                 default -> new ArrayList<>();
             };
         }

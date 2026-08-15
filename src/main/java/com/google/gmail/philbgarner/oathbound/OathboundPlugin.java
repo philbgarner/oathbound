@@ -14,9 +14,13 @@ import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
 import com.google.gmail.philbgarner.oathbound.gui.OathBuilderListener;
 import com.google.gmail.philbgarner.oathbound.gui.TradeGuiListener;
 import com.google.gmail.philbgarner.oathbound.gui.ProtectionLockGuiListener;
+import com.google.gmail.philbgarner.oathbound.honor.HonorCalculator;
+import com.google.gmail.philbgarner.oathbound.honor.HonorService;
+import com.google.gmail.philbgarner.oathbound.honor.PlayerHonor;
 import com.google.gmail.philbgarner.oathbound.listener.AltarConsecrationListener;
 import com.google.gmail.philbgarner.oathbound.listener.ClaimBuildGuardListener;
 import com.google.gmail.philbgarner.oathbound.listener.DeathTrackingListener;
+import com.google.gmail.philbgarner.oathbound.listener.HonorLedgerListener;
 import com.google.gmail.philbgarner.oathbound.listener.ProtectionLockListener;
 import com.google.gmail.philbgarner.oathbound.oath.ConditionEngine;
 import com.google.gmail.philbgarner.oathbound.oath.DeathTracker;
@@ -59,6 +63,8 @@ public final class OathboundPlugin extends JavaPlugin {
     private ManualConfirmStore manualConfirmStore;
     private ConditionEngine conditionEngine;
     private EscrowExpiryService escrowExpiryService;
+    private HonorService honorService;
+    private HonorCalculator honorCalculator;
 
     private final Map<UUID, ProtectionGroup> groupCache = new ConcurrentHashMap<>();
     private final Map<UUID, Oath> oathCache = new ConcurrentHashMap<>();
@@ -95,6 +101,11 @@ public final class OathboundPlugin extends JavaPlugin {
                 getLogger().log(Level.SEVERE, "Failed to persist ledger entry " + entry.id(), e);
             }
         }));
+        honorService = new HonorService();
+        honorCalculator = new HonorCalculator(oathboundConfig.honorFulfillGainBase(),
+                oathboundConfig.honorBreachLossBase(), oathboundConfig.honorBloodOathMultiplier());
+        HonorLedgerListener honorLedgerListener = new HonorLedgerListener(this);
+        ledger.addListener(honorLedgerListener::onLedgerEntry);
 
         deathTracker = new DeathTracker();
         deathTracker.addListener(record -> persistenceExecutor.submit(() -> {
@@ -222,10 +233,15 @@ public final class OathboundPlugin extends JavaPlugin {
             for (Protection protection : dataStore.loadAllProtections()) {
                 protectionCache.put(protection.id(), protection);
             }
+            int honorCount = 0;
+            for (PlayerHonor honor : dataStore.loadAllHonor()) {
+                honorService.loadHonor(honor);
+                honorCount++;
+            }
             getLogger().info("Loaded " + groupCache.size() + " group(s), " + oathCache.size() + " oath(s), "
                     + altarCache.size() + " altar(s), " + tradeOfferCache.size() + " trade offer(s), "
                     + deathRecordCount + " death record(s), " + escrowClaimCache.size() + " escrow claim(s), "
-                    + protectionCache.size() + " protection(s) from storage.");
+                    + protectionCache.size() + " protection(s), " + honorCount + " honor record(s) from storage.");
         } catch (DataStoreException e) {
             getLogger().log(Level.SEVERE, "Failed to load persisted state", e);
         }
@@ -311,6 +327,16 @@ public final class OathboundPlugin extends JavaPlugin {
         });
     }
 
+    public void persistHonorAsync(PlayerHonor honor) {
+        persistenceExecutor.submit(() -> {
+            try {
+                dataStore.saveHonor(honor);
+            } catch (DataStoreException e) {
+                getLogger().log(Level.SEVERE, "Failed to persist honor for " + honor.player().playerId(), e);
+            }
+        });
+    }
+
     public OathboundConfig oathboundConfig() {
         return oathboundConfig;
     }
@@ -365,5 +391,13 @@ public final class OathboundPlugin extends JavaPlugin {
 
     public Map<UUID, Protection> protectionCache() {
         return protectionCache;
+    }
+
+    public HonorService honorService() {
+        return honorService;
+    }
+
+    public HonorCalculator honorCalculator() {
+        return honorCalculator;
     }
 }

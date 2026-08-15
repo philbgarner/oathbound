@@ -4,6 +4,7 @@ import com.google.gmail.philbgarner.oathbound.altar.Altar;
 import com.google.gmail.philbgarner.oathbound.contract.TradeOffer;
 import com.google.gmail.philbgarner.oathbound.economy.PlayerBalance;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
+import com.google.gmail.philbgarner.oathbound.honor.PlayerHonor;
 import com.google.gmail.philbgarner.oathbound.oath.DeathRecord;
 import com.google.gmail.philbgarner.oathbound.oath.EscrowClaim;
 import com.google.gmail.philbgarner.oathbound.oath.LedgerEntry;
@@ -48,6 +49,10 @@ public interface DataStore {
     void saveBalance(PlayerBalance balance) throws DataStoreException;
 
     List<PlayerBalance> loadAllBalances() throws DataStoreException;
+
+    void saveHonor(PlayerHonor honor) throws DataStoreException;
+
+    List<PlayerHonor> loadAllHonor() throws DataStoreException;
 
     void saveAltar(Altar altar) throws DataStoreException;
 

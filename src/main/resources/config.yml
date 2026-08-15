@@ -38,3 +38,27 @@ protection:
   # this item to open the group picker. Any other item (or empty hand) is a normal interaction,
   # gated by whatever ProtectionGroup the block is already locked to (if any).
   lock-tool-material: TRIPWIRE_HOOK
+
+honor:
+  # Honor gained by every party when an oath resolves FULFILLED, before severity/blood-oath scaling.
+  fulfill-gain-base: 10
+  # Honor lost by every party when an oath resolves BROKEN, before scaling. Kept larger than
+  # fulfill-gain-base by default so breaking an oath stings more than fulfilling one rewards.
+  breach-loss-base: 20
+  # Both gain and loss are multiplied by this for Blood Oaths - "Blood Oaths matter more," both ways.
+  blood-oath-multiplier: 2.0
+  # Minimum current Honor required to swear a new Blood Oath. Default 0 only blocks players who've
+  # already gone Honor-negative (i.e. broken oaths before) - a fresh player at 0 Honor is unaffected.
+  min-honor-for-blood-oath: 0
+  # Cosmetic title ladder, keyed by the minimum Honor score required for that title. A player's title
+  # is the highest threshold their current Honor meets or exceeds.
+  tiers:
+    -1000: Faithbroken
+    0: Unproven
+    500: Oathkeeper
+    2000: Renowned
+  # Real mechanical penalty applied to every party when a Blood Oath resolves BROKEN: a temporary
+  # potion effect. Any valid Bukkit PotionEffectType name.
+  blood-oath-breach-debuff-effect: WEAKNESS
+  blood-oath-breach-debuff-duration-seconds: 300
+  blood-oath-breach-debuff-amplifier: 1

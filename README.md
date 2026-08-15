@@ -217,6 +217,9 @@ debug command surface lets you exercise it directly. Commands require a player, 
 
 /oathbound-debug altar list
 /oathbound-debug altar info <altarId>
+
+/oathbound-debug honor info [player]
+/oathbound-debug honor adjust <player> <delta>
 ```
 
 `tier` is one of `INDIVIDUAL`, `COMPANY`, `TOWN`, `REGION`, `KINGDOM`. Tab completion works for
@@ -331,9 +334,24 @@ protection:
   # Item that must be held to lock/unlock a chest or door - right-click the block while holding
   # this item to open the group picker.
   lock-tool-material: TRIPWIRE_HOOK
+
+honor:
+  fulfill-gain-base: 10
+  breach-loss-base: 20
+  blood-oath-multiplier: 2.0
+  min-honor-for-blood-oath: 0
+  tiers:
+    -1000: Faithbroken
+    0: Unproven
+    500: Oathkeeper
+    2000: Renowned
+  blood-oath-breach-debuff-effect: WEAKNESS
+  blood-oath-breach-debuff-duration-seconds: 300
+  blood-oath-breach-debuff-amplifier: 1
 ```
 
-`capstone-material` and `lock-tool-material` accept any valid Bukkit `Material` name.
+`capstone-material` and `lock-tool-material` accept any valid Bukkit `Material` name, and
+`blood-oath-breach-debuff-effect` accepts any valid Bukkit `PotionEffectType` name.
 
 ---
 
@@ -385,9 +403,19 @@ Tracking against the [master design plan](./oathbound-master-plan.md)'s build or
       Altar Power/sacrifice exists (radius is always 0 today), but activates automatically once that
       lands.
 
-### Not yet built
-
-- [ ] Honor/reputation system + Blood Oath tier
+- [x] Honor/reputation system + Blood Oath tier — a single global Honor score per player, moved by a
+      `Ledger` listener whenever an oath resolves `FULFILLED` (gain) or `BROKEN` (loss, a larger swing
+      than the gain), scaled by a rough severity score (clause count + escrowed currency) and amplified
+      further for Blood Oaths in both directions; `VOIDED` stays neutral. A configurable minimum-Honor
+      threshold gates swearing new Blood Oaths (default 0 - it only blocks players who've already gone
+      Honor-negative). A Blood Oath breaking also applies a configurable temporary potion-effect
+      "curse" debuff. Cosmetic title tiers ("Faithbroken"/"Oathkeeper"/etc., config-driven thresholds)
+      are exposed via `/oathbound-debug honor info|adjust` - no chat-prefix/Oath-Board display yet since
+      neither has a precedent or exists respectively. **Known limitation:** the domain model has no
+      fault-attribution concept yet, so Honor/debuff effects apply to every party of the oath, not just
+      whoever actually broke it - and `BROKEN` is still only reachable via the debug command (no
+      automated "unmet deadline" detection exists). Both should narrow once a real breach-detection/
+      reporting flow is built.
 - [ ] NPC Notary (rooted villager) + Sealing Table, and the async offer/counter-offer negotiation
       mailbox
 - [ ] Public Oath Board (regional + capital)

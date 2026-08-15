@@ -2,12 +2,15 @@ package com.google.gmail.philbgarner.oathbound.config;
 
 import com.google.gmail.philbgarner.oathbound.economy.Currency;
 import com.google.gmail.philbgarner.oathbound.group.GroupTier;
+import com.google.gmail.philbgarner.oathbound.honor.HonorTiers;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.potion.PotionEffectType;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -35,11 +38,22 @@ public final class OathboundConfig {
     private final Map<GroupTier, Double> altarTierRadiusMultipliers;
     private final Duration escrowClaimExpiry;
     private final Material protectionLockToolMaterial;
+    private final long honorFulfillGainBase;
+    private final long honorBreachLossBase;
+    private final double honorBloodOathMultiplier;
+    private final long honorMinForBloodOath;
+    private final HonorTiers honorTiers;
+    private final PotionEffectType honorBloodOathBreachDebuffEffect;
+    private final Duration honorBloodOathBreachDebuffDuration;
+    private final int honorBloodOathBreachDebuffAmplifier;
 
     private OathboundConfig(Path sqliteFile, int resolverDepthCutoff, List<Currency> currencies,
                              Material altarCapstoneMaterial, double altarPowerRadiusScale,
                              Map<GroupTier, Double> altarTierRadiusMultipliers, Duration escrowClaimExpiry,
-                             Material protectionLockToolMaterial) {
+                             Material protectionLockToolMaterial, long honorFulfillGainBase,
+                             long honorBreachLossBase, double honorBloodOathMultiplier, long honorMinForBloodOath,
+                             HonorTiers honorTiers, PotionEffectType honorBloodOathBreachDebuffEffect,
+                             Duration honorBloodOathBreachDebuffDuration, int honorBloodOathBreachDebuffAmplifier) {
         this.sqliteFile = sqliteFile;
         this.resolverDepthCutoff = resolverDepthCutoff;
         this.currencies = currencies;
@@ -48,6 +62,14 @@ public final class OathboundConfig {
         this.altarTierRadiusMultipliers = altarTierRadiusMultipliers;
         this.escrowClaimExpiry = escrowClaimExpiry;
         this.protectionLockToolMaterial = protectionLockToolMaterial;
+        this.honorFulfillGainBase = honorFulfillGainBase;
+        this.honorBreachLossBase = honorBreachLossBase;
+        this.honorBloodOathMultiplier = honorBloodOathMultiplier;
+        this.honorMinForBloodOath = honorMinForBloodOath;
+        this.honorTiers = honorTiers;
+        this.honorBloodOathBreachDebuffEffect = honorBloodOathBreachDebuffEffect;
+        this.honorBloodOathBreachDebuffDuration = honorBloodOathBreachDebuffDuration;
+        this.honorBloodOathBreachDebuffAmplifier = honorBloodOathBreachDebuffAmplifier;
     }
 
     public static OathboundConfig load(FileConfiguration config, Path dataFolder) {
@@ -87,9 +109,41 @@ public final class OathboundConfig {
             throw new IllegalArgumentException("Unknown protection.lock-tool-material: " + lockToolName);
         }
 
+        long fulfillGainBase = config.getLong("honor.fulfill-gain-base", 10L);
+        long breachLossBase = config.getLong("honor.breach-loss-base", 20L);
+        double bloodOathMultiplier = config.getDouble("honor.blood-oath-multiplier", 2.0);
+        long minForBloodOath = config.getLong("honor.min-honor-for-blood-oath", 0L);
+
+        List<HonorTiers.Tier> tiers = new ArrayList<>();
+        ConfigurationSection honorTierSection = config.getConfigurationSection("honor.tiers");
+        if (honorTierSection != null) {
+            for (String key : honorTierSection.getKeys(false)) {
+                tiers.add(new HonorTiers.Tier(Long.parseLong(key), honorTierSection.getString(key)));
+            }
+        }
+        if (tiers.isEmpty()) {
+            tiers.addAll(List.of(
+                    new HonorTiers.Tier(-1000L, "Faithbroken"),
+                    new HonorTiers.Tier(0L, "Unproven"),
+                    new HonorTiers.Tier(500L, "Oathkeeper"),
+                    new HonorTiers.Tier(2000L, "Renowned")
+            ));
+        }
+        HonorTiers honorTiers = new HonorTiers(tiers);
+
+        String debuffEffectName = config.getString("honor.blood-oath-breach-debuff-effect", "WEAKNESS");
+        PotionEffectType debuffEffect = PotionEffectType.getByName(debuffEffectName);
+        if (debuffEffect == null) {
+            throw new IllegalArgumentException("Unknown honor.blood-oath-breach-debuff-effect: " + debuffEffectName);
+        }
+        int debuffDurationSeconds = config.getInt("honor.blood-oath-breach-debuff-duration-seconds", 300);
+        Duration debuffDuration = Duration.ofSeconds(debuffDurationSeconds);
+        int debuffAmplifier = config.getInt("honor.blood-oath-breach-debuff-amplifier", 1);
+
         return new OathboundConfig(dataFolder.resolve(sqliteFileName), depthCutoff, currencies,
                 capstoneMaterial, powerRadiusScale, Map.copyOf(tierMultipliers), escrowClaimExpiry,
-                lockToolMaterial);
+                lockToolMaterial, fulfillGainBase, breachLossBase, bloodOathMultiplier, minForBloodOath,
+                honorTiers, debuffEffect, debuffDuration, debuffAmplifier);
     }
 
     public Path sqliteFile() {
@@ -122,5 +176,37 @@ public final class OathboundConfig {
 
     public Material protectionLockToolMaterial() {
         return protectionLockToolMaterial;
+    }
+
+    public long honorFulfillGainBase() {
+        return honorFulfillGainBase;
+    }
+
+    public long honorBreachLossBase() {
+        return honorBreachLossBase;
+    }
+
+    public double honorBloodOathMultiplier() {
+        return honorBloodOathMultiplier;
+    }
+
+    public long honorMinForBloodOath() {
+        return honorMinForBloodOath;
+    }
+
+    public HonorTiers honorTiers() {
+        return honorTiers;
+    }
+
+    public PotionEffectType honorBloodOathBreachDebuffEffect() {
+        return honorBloodOathBreachDebuffEffect;
+    }
+
+    public Duration honorBloodOathBreachDebuffDuration() {
+        return honorBloodOathBreachDebuffDuration;
+    }
+
+    public int honorBloodOathBreachDebuffAmplifier() {
+        return honorBloodOathBreachDebuffAmplifier;
     }
 }

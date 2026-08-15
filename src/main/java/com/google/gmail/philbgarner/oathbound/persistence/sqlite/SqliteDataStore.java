@@ -6,6 +6,7 @@ import com.google.gmail.philbgarner.oathbound.economy.Currency;
 import com.google.gmail.philbgarner.oathbound.economy.PlayerBalance;
 import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
+import com.google.gmail.philbgarner.oathbound.honor.PlayerHonor;
 import com.google.gmail.philbgarner.oathbound.oath.DeathRecord;
 import com.google.gmail.philbgarner.oathbound.oath.EscrowClaim;
 import com.google.gmail.philbgarner.oathbound.oath.LedgerEntry;
@@ -46,7 +47,8 @@ public final class SqliteDataStore implements DataStore {
             "db/migrations/0003_trade_offers.sql",
             "db/migrations/0004_death_records.sql",
             "db/migrations/0005_escrow_claims.sql",
-            "db/migrations/0006_protections.sql"
+            "db/migrations/0006_protections.sql",
+            "db/migrations/0007_honor.sql"
     );
 
     private final Path databaseFile;
@@ -314,6 +316,34 @@ public final class SqliteDataStore implements DataStore {
             }
         } catch (SQLException e) {
             throw new DataStoreException("Failed to load all balances", e);
+        }
+        return result;
+    }
+
+    @Override
+    public synchronized void saveHonor(PlayerHonor honor) throws DataStoreException {
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "INSERT INTO player_honor(player_id, amount) VALUES (?, ?) "
+                        + "ON CONFLICT(player_id) DO UPDATE SET amount = excluded.amount")) {
+            stmt.setString(1, honor.player().playerId().toString());
+            stmt.setLong(2, honor.value());
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to save honor for " + honor.player().playerId(), e);
+        }
+    }
+
+    @Override
+    public synchronized List<PlayerHonor> loadAllHonor() throws DataStoreException {
+        List<PlayerHonor> result = new ArrayList<>();
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT player_id, amount FROM player_honor")) {
+            while (rs.next()) {
+                PlayerRef player = new PlayerRef(UUID.fromString(rs.getString(1)));
+                result.add(new PlayerHonor(player, rs.getLong(2)));
+            }
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to load all honor", e);
         }
         return result;
     }

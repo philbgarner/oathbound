@@ -66,6 +66,10 @@ public final class OathboundOathCommand implements CommandExecutor, TabCompleter
         boolean blood = args.length >= 3 && Boolean.parseBoolean(args[2]);
 
         PlayerRef selfRef = new PlayerRef(player.getUniqueId());
+        if (blood && plugin.honorService().honor(selfRef) < plugin.oathboundConfig().honorMinForBloodOath()) {
+            player.sendMessage("Your Honor is too low to swear a Blood Oath right now.");
+            return;
+        }
         PlayerRef otherRef = new PlayerRef(other.getUniqueId());
         Oath oath = plugin.oathService().createDraft(List.of(selfRef, otherRef), blood);
         plugin.oathCache().put(oath.id(), oath);
