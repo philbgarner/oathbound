@@ -13,8 +13,9 @@ currency, permissions, and territory systems, backed by an embedded SQLite datab
 to stand up.
 
 > **Status:** early development. The core Oath engine, ownership/permission model, altar placement
-> detection, and a chest-GUI open trade contract flow are implemented and tested. Everything else in
-> the [Roadmap](#roadmap) is still on the way — see that section for exactly what's live today.
+> detection, and chest-GUI flows for both open trade contracts and named-party oaths are implemented and
+> tested. Everything else in the [Roadmap](#roadmap) is still on the way — see that section for exactly
+> what's live today.
 
 ---
 
@@ -52,6 +53,9 @@ to stand up.
   through an in-world chest interface; anyone can browse the open contract board and fulfill it. The
   first player to accept becomes the oath's second party and the swap happens automatically, with
   delivery held safely if either side is offline at the moment of completion.
+- **Chest-GUI named-party oath builder** — draft an oath against a specific counterparty and attach
+  transfer, custom-flag, and kill-count clauses to it through an in-world chest interface, then propose
+  it. The named counterparty reviews and signs (or declines) it from their own pending-oaths board.
 - **Everything persists** — SQLite-backed via a pluggable storage adapter, with an in-memory cache for
   fast permission checks and async writes so gameplay never blocks on disk I/O.
 
@@ -91,6 +95,24 @@ also cancel their own unclaimed listing from the board to get their items back.
 This is deliberately a narrow, self-contained feature rather than the general-purpose Escrow system
 described in the master plan (§4) — it doesn't use the generic `EscrowClause`/release-schedule model,
 and there's no claim/expiry/abandonment handling. Real Escrow is still on the [Roadmap](#roadmap).
+
+### Named-party oaths (the general-purpose builder)
+
+`/oathbound-oath create <player>` drafts a two-party oath against a named counterparty and opens a chest
+GUI for building it up: click a button to add a **transfer** clause (reassigns one of your
+`ProtectionGroup`s' ownership), a **custom flag** (free-text roleplay clause with no mechanical effect),
+or a **kill count** (a target player and a required kill tally). Since chest GUIs have no text field,
+any free text or numbers the clause needs (flag wording, a target's name, a quantity) are collected by
+closing the GUI and typing the answer in chat, which the plugin intercepts. Once at least one clause is
+attached, **Propose** sends the draft to the named counterparty; they review it and sign or decline it
+from their own `/oathbound-oath pending` board. Signing carries the oath straight through `SEALED` into
+`ACTIVE`, same as accepting an open contract does.
+
+Every clause added this way is gated by an `Immediate` condition — full condition-engine wiring (so a
+clause can gate on time elapsed, a death count, a payment, etc.) is still on the [Roadmap](#roadmap), as
+is actually executing a clause's effect (the transfer clause doesn't move ownership yet; the kill-count
+clause doesn't track kills yet). This feature is about building and proposing/signing the oath, not
+fulfilling it.
 
 ### ProtectionGroups
 
@@ -132,6 +154,13 @@ specifically so a flat-file/YAML backend can be added later without touching any
 ```
 /oathbound-trade            # open the contract builder - deposit items, post an open offer
 /oathbound-trade board      # browse open contracts; click one to view/fulfill it, or your own to cancel it
+```
+
+### Named-party oaths (in-game GUI)
+
+```
+/oathbound-oath create <playerName> [blood]   # draft a named-party oath, then build it up in the chest GUI
+/oathbound-oath pending                       # review oaths proposed to you; click one to sign or decline it
 ```
 
 ### Debug commands
@@ -286,13 +315,14 @@ Tracking against the [master design plan](./oathbound-master-plan.md)'s build or
 - [x] Altar structure detection (barrel + capstone + candle) and altar creation at zero Power, with a
       tier-scaled, Power-based radius formula
 - [x] Chest-GUI contract builder — open (no-named-counterparty) oaths, and an item-for-item trade
-      contract built on top of them (post via GUI, browse a board, fulfill, auto-swap). Only this
-      barter case is wired up; a general builder for arbitrary named-party clauses is still ahead.
+      contract built on top of them (post via GUI, browse a board, fulfill, auto-swap).
+- [x] General-purpose chest-GUI builder for named-party oaths — attach transfer, custom-flag, and
+      kill-count clauses, propose to a named counterparty, and sign/decline from a pending-oaths board.
+      Every clause is `Immediate`-gated for now; clause effects (transfers, kill tracking) aren't
+      executed yet, and escrow clauses aren't exposed in this builder.
 
 ### Not yet built
 
-- [ ] General-purpose chest-GUI builder for named-party oaths and non-barter clause types (transfer,
-      custom flags, kill counts) — today's GUI only covers the open item-trade case
 - [ ] Full condition-engine wiring (clauses don't yet auto-resolve when their conditions are met)
 - [ ] Virtualized Escrow — claim/expiry/abandonment handling
 - [ ] Chest/door/claim access gating tied to `ProtectionGroup`

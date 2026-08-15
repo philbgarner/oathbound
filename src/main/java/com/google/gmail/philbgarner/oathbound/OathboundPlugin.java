@@ -3,6 +3,7 @@ package com.google.gmail.philbgarner.oathbound;
 import com.google.gmail.philbgarner.oathbound.altar.Altar;
 import com.google.gmail.philbgarner.oathbound.altar.AltarRadiusCalculator;
 import com.google.gmail.philbgarner.oathbound.command.OathboundDebugCommand;
+import com.google.gmail.philbgarner.oathbound.command.OathboundOathCommand;
 import com.google.gmail.philbgarner.oathbound.command.OathboundTradeCommand;
 import com.google.gmail.philbgarner.oathbound.config.OathboundConfig;
 import com.google.gmail.philbgarner.oathbound.contract.TradeOffer;
@@ -10,6 +11,7 @@ import com.google.gmail.philbgarner.oathbound.economy.EconomyService;
 import com.google.gmail.philbgarner.oathbound.economy.PlayerBalance;
 import com.google.gmail.philbgarner.oathbound.group.OwnershipResolver;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
+import com.google.gmail.philbgarner.oathbound.gui.OathBuilderListener;
 import com.google.gmail.philbgarner.oathbound.gui.TradeGuiListener;
 import com.google.gmail.philbgarner.oathbound.listener.AltarConsecrationListener;
 import com.google.gmail.philbgarner.oathbound.oath.Ledger;
@@ -99,8 +101,16 @@ public final class OathboundPlugin extends JavaPlugin {
             tradeCommand.setTabCompleter(executor);
         }
 
+        PluginCommand oathCommand = getCommand("oathbound-oath");
+        if (oathCommand != null) {
+            OathboundOathCommand executor = new OathboundOathCommand(this);
+            oathCommand.setExecutor(executor);
+            oathCommand.setTabCompleter(executor);
+        }
+
         getServer().getPluginManager().registerEvents(new AltarConsecrationListener(this), this);
         getServer().getPluginManager().registerEvents(new TradeGuiListener(this), this);
+        getServer().getPluginManager().registerEvents(new OathBuilderListener(this), this);
 
         getLogger().info("Oathbound enabled.");
     }
