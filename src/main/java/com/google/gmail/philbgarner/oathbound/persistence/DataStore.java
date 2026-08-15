@@ -5,6 +5,7 @@ import com.google.gmail.philbgarner.oathbound.contract.TradeOffer;
 import com.google.gmail.philbgarner.oathbound.economy.PlayerBalance;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
 import com.google.gmail.philbgarner.oathbound.honor.PlayerHonor;
+import com.google.gmail.philbgarner.oathbound.notary.Notary;
 import com.google.gmail.philbgarner.oathbound.oath.DeathRecord;
 import com.google.gmail.philbgarner.oathbound.oath.EscrowClaim;
 import com.google.gmail.philbgarner.oathbound.oath.LedgerEntry;
@@ -83,4 +84,10 @@ public interface DataStore {
     List<Protection> loadAllProtections() throws DataStoreException;
 
     void deleteProtection(UUID id) throws DataStoreException;
+
+    void saveNotary(Notary notary) throws DataStoreException;
+
+    List<Notary> loadAllNotaries() throws DataStoreException;
+
+    void deleteNotary(UUID id) throws DataStoreException;
 }

@@ -68,8 +68,8 @@ to stand up.
   fast permission checks and async writes so gameplay never blocks on disk I/O.
 
 See [`oathbound-master-plan.md`](./oathbound-master-plan.md) for the full design doc, including
-systems not built yet (Blood Oaths, the NPC Notary, the Public Oath Board, elections, bounty
-contracts, and the altar sacrifice/decay ritual).
+systems not built yet (the Public Oath Board, elections, bounty contracts, the altar sacrifice/decay
+ritual, and the full counter-offer negotiation chain).
 
 ---
 
@@ -162,10 +162,22 @@ current Power — at zero Power, that's zero radius. Charging Power via a sacrif
 time, vulnerability tiers, and desecration are designed (see the master plan, §10) but not implemented
 yet.
 
+### Notary
+
+`/oathbound-notary install <name>` spawns a rooted, invulnerable Villager at your location — no
+wandering AI, no vanilla trading. Right-click it to open a small hub: start a new named-party oath draft
+(you type the counterparty's name in chat) or review oaths proposed to you, from any Notary you
+interact with — the mailbox is scoped to you, not the physical NPC. The Sealing Table (right-click the
+configured block, a lectern by default) is a face-to-face shortcut straight to the draft prompt, skipping
+the hub. Proposals respect a per-recipient pending-offer cap and auto-void, neutrally, after sitting
+unanswered past a configurable number of days. Recipients still only sign or decline from the existing
+pending-oath board — editable counter-offers (the master plan's full negotiation state machine) aren't
+implemented yet.
+
 ### Persistence
 
-All state — oaths, groups, ledger entries, balances, altars, trade offers, death records, escrow claims —
-is stored via a
+All state — oaths, groups, ledger entries, balances, altars, trade offers, death records, escrow claims,
+protections, Honor, notaries — is stored via a
 `DataStore` adapter interface. The only implementation today is SQLite (embedded, file-based, bundled
 inside the plugin jar — there is nothing separate to install or run). The interface is adapter-based
 specifically so a flat-file/YAML backend can be added later without touching any calling code.
@@ -188,6 +200,16 @@ specifically so a flat-file/YAML backend can be added later without touching any
 /oathbound-oath pending                       # review oaths proposed to you; click one to sign or decline it
 /oathbound-oath claim                         # list escrow item batches you can currently claim
 ```
+
+### Notary NPC (in-game)
+
+```
+/oathbound-notary install <name...>   # spawn a rooted, invulnerable Notary Villager at your location
+```
+
+Right-click an installed Notary to open its menu (start a new named-party oath draft, or review oaths
+proposed to you), or right-click the configured Sealing Table block (a lectern by default) for a
+face-to-face shortcut straight to the draft prompt.
 
 ### Debug commands
 
@@ -220,6 +242,10 @@ debug command surface lets you exercise it directly. Commands require a player, 
 
 /oathbound-debug honor info [player]
 /oathbound-debug honor adjust <player> <delta>
+
+/oathbound-debug notary list
+/oathbound-debug notary info <notaryId>
+/oathbound-debug notary remove <notaryId>
 ```
 
 `tier` is one of `INDIVIDUAL`, `COMPANY`, `TOWN`, `REGION`, `KINGDOM`. Tab completion works for
@@ -348,6 +374,11 @@ honor:
   blood-oath-breach-debuff-effect: WEAKNESS
   blood-oath-breach-debuff-duration-seconds: 300
   blood-oath-breach-debuff-amplifier: 1
+
+notary:
+  sealing-table-material: LECTERN
+  pending-offer-cap-per-player: 10
+  negotiation-expiry-days: 7
 ```
 
 `capstone-material` and `lock-tool-material` accept any valid Bukkit `Material` name, and
@@ -416,8 +447,16 @@ Tracking against the [master design plan](./oathbound-master-plan.md)'s build or
       whoever actually broke it - and `BROKEN` is still only reachable via the debug command (no
       automated "unmet deadline" detection exists). Both should narrow once a real breach-detection/
       reporting flow is built.
-- [ ] NPC Notary (rooted villager) + Sealing Table, and the async offer/counter-offer negotiation
-      mailbox
+- [x] NPC Notary (rooted villager) + Sealing Table, and a lighter-weight async negotiation mailbox —
+      `/oathbound-notary install <name>` spawns a rooted, invulnerable Villager; right-clicking it opens
+      a small hub GUI to start a new named-party oath draft (type the counterparty's name in chat) or
+      review oaths proposed to you, wherever they were sent from. The Sealing Table (right-click the
+      configured block, a lectern by default) is a face-to-face shortcut straight to the draft prompt.
+      Proposals now also respect a per-recipient pending-offer cap and auto-void (neutral, no Honor
+      change) after a configurable number of days unanswered. **Scope note:** this deliberately does not
+      implement the master plan's full `DRAFT → OFFERED → COUNTERED → ...` negotiation state machine —
+      recipients still only Sign or Decline a proposal (the existing pending-oath board), not edit and
+      counter-offer it. True counter-offering is left for a later pass.
 - [ ] Public Oath Board (regional + capital)
 - [ ] Altar sacrifice ritual (Power accrual), decay, vulnerability tiers, desecration outcomes,
       reconsecration cooldown, and claim nesting/overlap resolution

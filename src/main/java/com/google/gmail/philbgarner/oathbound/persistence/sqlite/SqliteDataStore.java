@@ -7,6 +7,7 @@ import com.google.gmail.philbgarner.oathbound.economy.PlayerBalance;
 import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
 import com.google.gmail.philbgarner.oathbound.honor.PlayerHonor;
+import com.google.gmail.philbgarner.oathbound.notary.Notary;
 import com.google.gmail.philbgarner.oathbound.oath.DeathRecord;
 import com.google.gmail.philbgarner.oathbound.oath.EscrowClaim;
 import com.google.gmail.philbgarner.oathbound.oath.LedgerEntry;
@@ -48,7 +49,8 @@ public final class SqliteDataStore implements DataStore {
             "db/migrations/0004_death_records.sql",
             "db/migrations/0005_escrow_claims.sql",
             "db/migrations/0006_protections.sql",
-            "db/migrations/0007_honor.sql"
+            "db/migrations/0007_honor.sql",
+            "db/migrations/0008_notaries.sql"
     );
 
     private final Path databaseFile;
@@ -545,6 +547,43 @@ public final class SqliteDataStore implements DataStore {
             stmt.executeUpdate();
         } catch (SQLException e) {
             throw new DataStoreException("Failed to delete protection " + id, e);
+        }
+    }
+
+    @Override
+    public synchronized void saveNotary(Notary notary) throws DataStoreException {
+        String json = gson.toJson(notary);
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "INSERT INTO notaries(id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data")) {
+            stmt.setString(1, notary.id().toString());
+            stmt.setString(2, json);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to save notary " + notary.id(), e);
+        }
+    }
+
+    @Override
+    public synchronized List<Notary> loadAllNotaries() throws DataStoreException {
+        List<Notary> result = new ArrayList<>();
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT data FROM notaries")) {
+            while (rs.next()) {
+                result.add(gson.fromJson(rs.getString(1), Notary.class));
+            }
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to load all notaries", e);
+        }
+        return result;
+    }
+
+    @Override
+    public synchronized void deleteNotary(UUID id) throws DataStoreException {
+        try (PreparedStatement stmt = connection.prepareStatement("DELETE FROM notaries WHERE id = ?")) {
+            stmt.setString(1, id.toString());
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to delete notary " + id, e);
         }
     }
 }

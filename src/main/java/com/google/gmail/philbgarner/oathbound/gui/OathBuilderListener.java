@@ -158,6 +158,15 @@ public final class OathBuilderListener implements Listener {
             player.sendMessage("Add at least one clause before proposing.");
             return;
         }
+        PlayerRef recipient = oath.parties().get(1);
+        long pendingForRecipient = plugin.oathCache().values().stream()
+                .filter(o -> !o.open() && o.state() == OathState.PROPOSED
+                        && o.parties().size() >= 2 && o.parties().get(1).equals(recipient))
+                .count();
+        if (pendingForRecipient >= plugin.oathboundConfig().notaryPendingOfferCap()) {
+            player.sendMessage("They already have too many pending oath offers - try again later.");
+            return;
+        }
         plugin.oathService().propose(oath, holder.creator());
         plugin.persistOathAsync(oath);
 

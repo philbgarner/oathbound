@@ -14,6 +14,8 @@ import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroupRef;
 import com.google.gmail.philbgarner.oathbound.group.Role;
 import com.google.gmail.philbgarner.oathbound.honor.PlayerHonor;
+import com.google.gmail.philbgarner.oathbound.notary.Notary;
+import com.google.gmail.philbgarner.oathbound.notary.NotaryLocation;
 import com.google.gmail.philbgarner.oathbound.oath.Clause;
 import com.google.gmail.philbgarner.oathbound.oath.Condition;
 import com.google.gmail.philbgarner.oathbound.oath.DeathRecord;
@@ -284,6 +286,41 @@ final class SqliteDataStoreTest {
             List<PlayerHonor> updated = second.loadAllHonor();
             assertEquals(1, updated.size());
             assertEquals(30L, updated.get(0).value());
+        } finally {
+            second.close();
+        }
+    }
+
+    @Test
+    void notaryRoundTripsAndDeletesAcrossAReopenedConnection(@TempDir Path tempDir) throws DataStoreException {
+        Path dbFile = tempDir.resolve("oathbound.db");
+        PlayerRef owner = new PlayerRef(UUID.randomUUID());
+        UUID entityId = UUID.randomUUID();
+        NotaryLocation location = new NotaryLocation(UUID.randomUUID(), 5, 70, -5);
+        UUID notaryId;
+
+        SqliteDataStore first = new SqliteDataStore(dbFile);
+        first.initialize();
+        try {
+            Notary notary = new Notary(UUID.randomUUID(), entityId, owner, "The Judge", location, Instant.now());
+            notaryId = notary.id();
+            first.saveNotary(notary);
+        } finally {
+            first.close();
+        }
+
+        SqliteDataStore second = new SqliteDataStore(dbFile);
+        second.initialize();
+        try {
+            List<Notary> loaded = second.loadAllNotaries();
+            assertEquals(1, loaded.size());
+            assertEquals(entityId, loaded.get(0).entityId());
+            assertEquals(owner, loaded.get(0).owner());
+            assertEquals(location, loaded.get(0).location());
+            assertEquals("The Judge", loaded.get(0).name());
+
+            second.deleteNotary(notaryId);
+            assertTrue(second.loadAllNotaries().isEmpty());
         } finally {
             second.close();
         }

@@ -14,3 +14,6 @@ commands:
   oathbound-oath:
     description: Build and propose a named-party oath, review oaths proposed to you, or claim escrow.
     usage: /<command> <create <playerName> [blood]|pending|claim>
+  oathbound-notary:
+    description: Install a Notary NPC at your current location.
+    usage: /<command> install <name...>

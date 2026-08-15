@@ -13,6 +13,7 @@ import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroupRef;
 import com.google.gmail.philbgarner.oathbound.group.Role;
 import com.google.gmail.philbgarner.oathbound.honor.PlayerHonor;
+import com.google.gmail.philbgarner.oathbound.notary.Notary;
 import com.google.gmail.philbgarner.oathbound.oath.Clause;
 import com.google.gmail.philbgarner.oathbound.oath.LedgerEntry;
 import com.google.gmail.philbgarner.oathbound.oath.Oath;
@@ -24,6 +25,7 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
@@ -36,12 +38,13 @@ import java.util.stream.Collectors;
 /** Minimal command surface to exercise the Phase 1 domain layer in-game before any GUI exists. */
 public final class OathboundDebugCommand implements CommandExecutor, TabCompleter {
 
-    private static final List<String> TOP_LEVEL = List.of("group", "oath", "ledger", "altar", "honor");
+    private static final List<String> TOP_LEVEL = List.of("group", "oath", "ledger", "altar", "honor", "notary");
     private static final List<String> GROUP_SUB = List.of("create", "transfer", "info", "list");
     private static final List<String> OATH_SUB = List.of("create", "addflag", "confirm", "propose", "seal",
             "activate", "fulfill", "breach", "void", "info", "list");
     private static final List<String> ALTAR_SUB = List.of("list", "info");
     private static final List<String> HONOR_SUB = List.of("info", "adjust");
+    private static final List<String> NOTARY_SUB = List.of("list", "info", "remove");
 
     private final OathboundPlugin plugin;
 
@@ -56,7 +59,7 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
             return true;
         }
         if (args.length == 0) {
-            sender.sendMessage("Usage: /" + label + " <group|oath|ledger|altar|honor> ...");
+            sender.sendMessage("Usage: /" + label + " <group|oath|ledger|altar|honor|notary> ...");
             return true;
         }
         try {
@@ -66,6 +69,7 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
                 case "ledger" -> handleLedger(player, args);
                 case "altar" -> handleAltar(player, args);
                 case "honor" -> handleHonor(player, args);
+                case "notary" -> handleNotary(player, args);
                 default -> sender.sendMessage("Unknown top-level command: " + args[0]);
             }
         } catch (OathTransitionException e) {
@@ -406,6 +410,67 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
         sender.sendMessage(args[2] + " now has " + newHonor + " honor.");
     }
 
+    // ---- notary ----
+
+    private void handleNotary(Player sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage("Usage: /oathbound-debug notary <list|info|remove> ...");
+            return;
+        }
+        switch (args[1].toLowerCase()) {
+            case "list" -> notaryList(sender);
+            case "info" -> notaryInfo(sender, args);
+            case "remove" -> notaryRemove(sender, args);
+            default -> sender.sendMessage("Unknown notary subcommand: " + args[1]);
+        }
+    }
+
+    private void notaryList(Player sender) {
+        if (plugin.notaryCache().isEmpty()) {
+            sender.sendMessage("No notaries.");
+            return;
+        }
+        for (Notary notary : plugin.notaryCache().values()) {
+            sender.sendMessage(notary.id() + " '" + notary.name() + "' owner=" + notary.owner()
+                    + " loc=" + notary.location());
+        }
+    }
+
+    private void notaryInfo(Player sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("Usage: /oathbound-debug notary info <notaryId>");
+            return;
+        }
+        Optional<Notary> notary = findNotary(args[2]);
+        if (notary.isEmpty()) {
+            sender.sendMessage("No such notary: " + args[2]);
+            return;
+        }
+        Notary n = notary.get();
+        sender.sendMessage("Notary " + n.id() + " '" + n.name() + "' owner=" + n.owner());
+        sender.sendMessage("  entityId=" + n.entityId() + " location=" + n.location() + " installedAt=" + n.installedAt());
+    }
+
+    private void notaryRemove(Player sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("Usage: /oathbound-debug notary remove <notaryId>");
+            return;
+        }
+        Optional<Notary> notary = findNotary(args[2]);
+        if (notary.isEmpty()) {
+            sender.sendMessage("No such notary: " + args[2]);
+            return;
+        }
+        Notary n = notary.get();
+        Entity entity = Bukkit.getEntity(n.entityId());
+        if (entity != null) {
+            entity.remove();
+        }
+        plugin.notaryCache().remove(n.id());
+        plugin.deleteNotaryAsync(n.id());
+        sender.sendMessage("Removed notary '" + n.name() + "'.");
+    }
+
     // ---- lookups ----
 
     private Optional<Altar> findAltar(String idString) {
@@ -432,6 +497,14 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
         }
     }
 
+    private Optional<Notary> findNotary(String idString) {
+        try {
+            return Optional.ofNullable(plugin.notaryCache().get(UUID.fromString(idString)));
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
+        }
+    }
+
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
@@ -443,6 +516,7 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
                 case "oath" -> filter(OATH_SUB, args[1]);
                 case "altar" -> filter(ALTAR_SUB, args[1]);
                 case "honor" -> filter(HONOR_SUB, args[1]);
+                case "notary" -> filter(NOTARY_SUB, args[1]);
                 default -> new ArrayList<>();
             };
         }

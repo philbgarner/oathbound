@@ -62,3 +62,15 @@ honor:
   blood-oath-breach-debuff-effect: WEAKNESS
   blood-oath-breach-debuff-duration-seconds: 300
   blood-oath-breach-debuff-amplifier: 1
+
+notary:
+  # Block that opens the named-party oath builder on right-click (prompts for the counterparty's
+  # name in chat) - the "Sealing Table," an alternate face-to-face entry point to the same flow a
+  # Notary NPC offers.
+  sealing-table-material: LECTERN
+  # Max named-party oaths a single player can have sitting PROPOSED (addressed to them) at once,
+  # to prevent mailbox spam.
+  pending-offer-cap-per-player: 10
+  # Days a named-party oath can sit PROPOSED unanswered before it's automatically voided (neutral,
+  # no Honor change - same as any other mutually-cancelled oath).
+  negotiation-expiry-days: 7

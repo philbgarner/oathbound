@@ -54,17 +54,24 @@ public final class OathboundOathCommand implements CommandExecutor, TabCompleter
             player.sendMessage("Usage: /oathbound-oath create <playerName> [blood]");
             return;
         }
-        OfflinePlayer other = Bukkit.getOfflinePlayer(args[1]);
+        boolean blood = args.length >= 3 && Boolean.parseBoolean(args[2]);
+        startNamedDraft(plugin, player, args[1], blood);
+    }
+
+    /** Draft-start logic shared by the slash command, the Notary NPC's "New Oath" button, and the
+     * Sealing Table - all three collect a counterparty name (via command arg or chat prompt) and then
+     * do exactly this. Blood Oaths are only offered via the slash command for now, not the physical
+     * entry points, which always pass {@code blood=false}. */
+    public static void startNamedDraft(OathboundPlugin plugin, Player player, String targetName, boolean blood) {
+        OfflinePlayer other = Bukkit.getOfflinePlayer(targetName);
         if (other.getUniqueId().equals(player.getUniqueId())) {
             player.sendMessage("You can't propose an oath to yourself.");
             return;
         }
         if (!other.hasPlayedBefore() && !other.isOnline()) {
-            player.sendMessage("Unknown player: " + args[1]);
+            player.sendMessage("Unknown player: " + targetName);
             return;
         }
-        boolean blood = args.length >= 3 && Boolean.parseBoolean(args[2]);
-
         PlayerRef selfRef = new PlayerRef(player.getUniqueId());
         if (blood && plugin.honorService().honor(selfRef) < plugin.oathboundConfig().honorMinForBloodOath()) {
             player.sendMessage("Your Honor is too low to swear a Blood Oath right now.");

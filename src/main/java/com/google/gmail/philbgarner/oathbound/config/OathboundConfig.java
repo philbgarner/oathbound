@@ -46,6 +46,9 @@ public final class OathboundConfig {
     private final PotionEffectType honorBloodOathBreachDebuffEffect;
     private final Duration honorBloodOathBreachDebuffDuration;
     private final int honorBloodOathBreachDebuffAmplifier;
+    private final Material sealingTableMaterial;
+    private final int notaryPendingOfferCap;
+    private final Duration notaryNegotiationExpiry;
 
     private OathboundConfig(Path sqliteFile, int resolverDepthCutoff, List<Currency> currencies,
                              Material altarCapstoneMaterial, double altarPowerRadiusScale,
@@ -53,7 +56,9 @@ public final class OathboundConfig {
                              Material protectionLockToolMaterial, long honorFulfillGainBase,
                              long honorBreachLossBase, double honorBloodOathMultiplier, long honorMinForBloodOath,
                              HonorTiers honorTiers, PotionEffectType honorBloodOathBreachDebuffEffect,
-                             Duration honorBloodOathBreachDebuffDuration, int honorBloodOathBreachDebuffAmplifier) {
+                             Duration honorBloodOathBreachDebuffDuration, int honorBloodOathBreachDebuffAmplifier,
+                             Material sealingTableMaterial, int notaryPendingOfferCap,
+                             Duration notaryNegotiationExpiry) {
         this.sqliteFile = sqliteFile;
         this.resolverDepthCutoff = resolverDepthCutoff;
         this.currencies = currencies;
@@ -70,6 +75,9 @@ public final class OathboundConfig {
         this.honorBloodOathBreachDebuffEffect = honorBloodOathBreachDebuffEffect;
         this.honorBloodOathBreachDebuffDuration = honorBloodOathBreachDebuffDuration;
         this.honorBloodOathBreachDebuffAmplifier = honorBloodOathBreachDebuffAmplifier;
+        this.sealingTableMaterial = sealingTableMaterial;
+        this.notaryPendingOfferCap = notaryPendingOfferCap;
+        this.notaryNegotiationExpiry = notaryNegotiationExpiry;
     }
 
     public static OathboundConfig load(FileConfiguration config, Path dataFolder) {
@@ -140,10 +148,20 @@ public final class OathboundConfig {
         Duration debuffDuration = Duration.ofSeconds(debuffDurationSeconds);
         int debuffAmplifier = config.getInt("honor.blood-oath-breach-debuff-amplifier", 1);
 
+        String sealingTableName = config.getString("notary.sealing-table-material", "LECTERN");
+        Material sealingTableMaterial = Material.matchMaterial(sealingTableName);
+        if (sealingTableMaterial == null) {
+            throw new IllegalArgumentException("Unknown notary.sealing-table-material: " + sealingTableName);
+        }
+        int notaryPendingOfferCap = config.getInt("notary.pending-offer-cap-per-player", 10);
+        int notaryNegotiationExpiryDays = config.getInt("notary.negotiation-expiry-days", 7);
+        Duration notaryNegotiationExpiry = Duration.ofDays(notaryNegotiationExpiryDays);
+
         return new OathboundConfig(dataFolder.resolve(sqliteFileName), depthCutoff, currencies,
                 capstoneMaterial, powerRadiusScale, Map.copyOf(tierMultipliers), escrowClaimExpiry,
                 lockToolMaterial, fulfillGainBase, breachLossBase, bloodOathMultiplier, minForBloodOath,
-                honorTiers, debuffEffect, debuffDuration, debuffAmplifier);
+                honorTiers, debuffEffect, debuffDuration, debuffAmplifier,
+                sealingTableMaterial, notaryPendingOfferCap, notaryNegotiationExpiry);
     }
 
     public Path sqliteFile() {
@@ -208,5 +226,17 @@ public final class OathboundConfig {
 
     public int honorBloodOathBreachDebuffAmplifier() {
         return honorBloodOathBreachDebuffAmplifier;
+    }
+
+    public Material sealingTableMaterial() {
+        return sealingTableMaterial;
+    }
+
+    public int notaryPendingOfferCap() {
+        return notaryPendingOfferCap;
+    }
+
+    public Duration notaryNegotiationExpiry() {
+        return notaryNegotiationExpiry;
     }
 }
