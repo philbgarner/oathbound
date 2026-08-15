@@ -12,9 +12,9 @@ Fully self-contained: **no Vault, no LuckPerms, no external claim plugin.** Oath
 currency, permissions, and territory systems, backed by an embedded SQLite database — nothing extra
 to stand up.
 
-> **Status:** early development. The core Oath engine, ownership/permission model, and altar
-> placement detection are implemented and tested. Everything else in the [Roadmap](#roadmap) is
-> still on the way — see that section for exactly what's live today.
+> **Status:** early development. The core Oath engine, ownership/permission model, altar placement
+> detection, and a chest-GUI open trade contract flow are implemented and tested. Everything else in
+> the [Roadmap](#roadmap) is still on the way — see that section for exactly what's live today.
 
 ---
 
@@ -48,6 +48,10 @@ to stand up.
   default, configurable), and a candle. Completing the structure creates the altar at zero Power;
   claim radius is a live, diminishing-returns function of Power and scales with your group's tier
   (Individual → Company → Town → Region → Kingdom).
+- **Chest-GUI open trade contracts** — post an item-for-item barter offer with no named counterparty
+  through an in-world chest interface; anyone can browse the open contract board and fulfill it. The
+  first player to accept becomes the oath's second party and the swap happens automatically, with
+  delivery held safely if either side is offline at the moment of completion.
 - **Everything persists** — SQLite-backed via a pluggable storage adapter, with an in-memory cache for
   fast permission checks and async writes so gameplay never blocks on disk I/O.
 
@@ -67,6 +71,26 @@ while its conditions are tracked. It resolves into exactly one of `FULFILLED`, `
 and stays there; terminal states have no further transitions. Every transition is recorded in the
 **Ledger**, an append-only log that's the single source of truth for oath history (and, eventually,
 the Public Oath Board).
+
+An Oath can also be **open**: instead of naming a counterparty up front, it starts with just its
+creator and sits `PROPOSED` with an empty second slot. Whoever accepts it first fills that slot and
+the oath is carried straight through `SEALED` into `ACTIVE` in one step — same lifecycle, same Ledger,
+just decided by whoever claims it rather than a named party.
+
+### Trade contracts (open contracts, in practice)
+
+The chest-GUI contract builder (`/oathbound-trade`) is the first thing built on top of open oaths: an
+item-for-item barter. The creator deposits items into a chest GUI and posts it; that creates an open
+Oath plus a `TradeOffer` holding the deposited items. Anyone can then browse `/oathbound-trade board`,
+open a listed contract, deposit their own items, and confirm — which fills the oath's second party,
+carries it to `FULFILLED`, and swaps the goods: the creator receives what the fulfiller deposited, and
+vice versa. If either side is offline the instant the swap happens, their items are held against the
+`TradeOffer` and delivered automatically the next time they log in, so nothing is lost. The creator can
+also cancel their own unclaimed listing from the board to get their items back.
+
+This is deliberately a narrow, self-contained feature rather than the general-purpose Escrow system
+described in the master plan (§4) — it doesn't use the generic `EscrowClause`/release-schedule model,
+and there's no claim/expiry/abandonment handling. Real Escrow is still on the [Roadmap](#roadmap).
 
 ### ProtectionGroups
 
@@ -94,18 +118,26 @@ yet.
 
 ### Persistence
 
-All state — oaths, groups, ledger entries, balances, altars — is stored via a `DataStore` adapter
-interface. The only implementation today is SQLite (embedded, file-based, bundled inside the plugin
-jar — there is nothing separate to install or run). The interface is adapter-based specifically so a
-flat-file/YAML backend can be added later without touching any calling code.
+All state — oaths, groups, ledger entries, balances, altars, trade offers — is stored via a
+`DataStore` adapter interface. The only implementation today is SQLite (embedded, file-based, bundled
+inside the plugin jar — there is nothing separate to install or run). The interface is adapter-based
+specifically so a flat-file/YAML backend can be added later without touching any calling code.
 
 ---
 
 ## Commands
 
-Oathbound doesn't have a GUI yet (the chest-GUI contract builder is on the roadmap). For now, a debug
-command surface lets you exercise everything from the console... well, from in-game — commands require
-a player, not console.
+### Trade contracts (in-game GUI)
+
+```
+/oathbound-trade            # open the contract builder - deposit items, post an open offer
+/oathbound-trade board      # browse open contracts; click one to view/fulfill it, or your own to cancel it
+```
+
+### Debug commands
+
+Everything else (Oaths, ProtectionGroups, the Ledger, Altars) doesn't have a player-facing UI yet — a
+debug command surface lets you exercise it directly. Commands require a player, not console.
 
 ```
 /oathbound-debug group create <name> [tier]
@@ -174,7 +206,7 @@ On first boot, Oathbound will:
 
 1. Create `plugins/Oathbound/config.yml` with the defaults shown below.
 2. Create `plugins/Oathbound/oathbound.db` (SQLite) and run its schema migrations.
-3. Log how many groups/oaths/altars it loaded (zero, on a fresh install).
+3. Log how many groups/oaths/altars/trade offers it loaded (zero, on a fresh install).
 
 There's a helper script if you're iterating locally against a server checked out elsewhere on disk —
 it builds, removes any previously-deployed Oathbound jar, and copies the fresh one in:
@@ -253,10 +285,14 @@ Tracking against the [master design plan](./oathbound-master-plan.md)'s build or
 - [x] SQLite-backed persistence adapter with async writes and an in-memory cache
 - [x] Altar structure detection (barrel + capstone + candle) and altar creation at zero Power, with a
       tier-scaled, Power-based radius formula
+- [x] Chest-GUI contract builder — open (no-named-counterparty) oaths, and an item-for-item trade
+      contract built on top of them (post via GUI, browse a board, fulfill, auto-swap). Only this
+      barter case is wired up; a general builder for arbitrary named-party clauses is still ahead.
 
 ### Not yet built
 
-- [ ] Chest-GUI contract builder (currently: debug commands only, no in-game UI)
+- [ ] General-purpose chest-GUI builder for named-party oaths and non-barter clause types (transfer,
+      custom flags, kill counts) — today's GUI only covers the open item-trade case
 - [ ] Full condition-engine wiring (clauses don't yet auto-resolve when their conditions are met)
 - [ ] Virtualized Escrow — claim/expiry/abandonment handling
 - [ ] Chest/door/claim access gating tied to `ProtectionGroup`
@@ -289,6 +325,7 @@ Tracking against the [master design plan](./oathbound-master-plan.md)'s build or
 ./gradlew runServer      # boot a local Paper test server with the plugin installed
 ```
 
-The domain layer (`oath`, `group`, `economy`, `altar` packages) has zero Bukkit dependencies by design
-— it's plain, JUnit-testable Java. Bukkit-specific glue (commands, event listeners) lives in its own
-packages (`command`, `listener`) on top of that domain layer.
+The domain layer (`oath`, `group`, `economy`, `altar`, `contract` packages) has zero Bukkit
+dependencies by design — it's plain, JUnit-testable Java. Bukkit-specific glue (commands, event
+listeners, inventory GUIs, item (de)serialization) lives in its own packages (`command`, `listener`,
+`gui`, `bukkit`) on top of that domain layer.
