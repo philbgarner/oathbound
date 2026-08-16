@@ -192,6 +192,18 @@ unanswered past a configurable number of days. Recipients still only sign or dec
 pending-oath board — editable counter-offers (the master plan's full negotiation state machine) aren't
 implemented yet.
 
+### Villager Shops
+
+Thirteen `/oathbound-<role>` commands (armorer, butcher, cartographer, cleric, farmer, fisherman,
+fletcher, leatherworker, librarian, mason, shepherd, toolsmith, weaponsmith — every vanilla Villager
+profession that actually trades) each spawn the same kind of rooted, invulnerable Villager the Notary
+uses, skinned for that role. Right-click one to open a fixed buy/sell chest menu instead of vanilla
+trading — every NPC of a given role shares that role's stock, a plain admin-edited list of items and
+prices in `config.yml` (`villagers.<role>.sells` / `.buys`), not a per-instance builder. Buying withdraws
+from your balance and grants the item; selling takes the item and deposits your balance, both through the
+same `EconomyService` the rest of the plugin uses. Four roles (fisherman, mason, farmer, librarian) ship
+with a small default stock out of the box; the rest start empty until an admin configures them.
+
 ### Public Oath Board
 
 Right-click the configured block (an oak sign by default) to open a small hub: **Browse Postings**
@@ -206,7 +218,7 @@ board is opened, the same pattern every other board-style GUI in this plugin alr
 ### Persistence
 
 All state — oaths, groups, ledger entries, balances, altars, trade offers, death records, escrow claims,
-protections, Honor, notaries, oath boards — is stored via a
+protections, Honor, notaries, oath boards, villager shop NPCs — is stored via a
 `DataStore` adapter interface. The only implementation today is SQLite (embedded, file-based, bundled
 inside the plugin jar — there is nothing separate to install or run). The interface is adapter-based
 specifically so a flat-file/YAML backend can be added later without touching any calling code.
@@ -239,6 +251,18 @@ specifically so a flat-file/YAML backend can be added later without touching any
 Right-click an installed Notary to open its menu (start a new named-party oath draft, or review oaths
 proposed to you), or right-click the configured Sealing Table block (a lectern by default) for a
 face-to-face shortcut straight to the draft prompt.
+
+### Villager Shops (in-game)
+
+```
+/oathbound-fisherman install <name...>      # and armorer, butcher, cartographer, cleric, farmer,
+/oathbound-mason install <name...>          # fletcher, leatherworker, librarian, shepherd, toolsmith,
+/oathbound-farmer install <name...>         # weaponsmith - same "install <name...>" shape for all 13
+/oathbound-librarian install <name...>
+```
+
+Right-click an installed shop NPC to open its buy/sell menu. Stock and prices are fixed per role in
+`config.yml`, not set per-NPC.
 
 ### Public Oath Board (in-game)
 
@@ -284,6 +308,10 @@ debug command surface lets you exercise it directly. Commands require a player, 
 /oathbound-debug board list
 /oathbound-debug board info <boardId>
 /oathbound-debug board remove <boardId>
+
+/oathbound-debug villager list
+/oathbound-debug villager info <villagerNpcId>
+/oathbound-debug villager remove <villagerNpcId>
 ```
 
 `tier` is one of `INDIVIDUAL`, `COMPANY`, `TOWN`, `REGION`, `KINGDOM`. Tab completion works for
@@ -421,11 +449,23 @@ notary:
 oath-board:
   material: OAK_SIGN
   feed-size: 50
+
+villagers:
+  # Each role's shop NPCs all share one fixed buy/sell list, edited here - not a per-instance builder.
+  fisherman:
+    sells:
+      - {material: COD, price: 2}
+      - {material: FISHING_ROD, price: 15}
+    buys:
+      - {material: TROPICAL_FISH, price: 1}
+  # ...mason, farmer, librarian ship with a small default stock too; the other 9 roles start empty
+  # (sells: [] / buys: []) until configured.
 ```
 
 `capstone-material`, `lock-tool-material`, `sealing-table-material`, and `oath-board.material` all accept
 any valid Bukkit `Material` name (each must be distinct), and `blood-oath-breach-debuff-effect` accepts
-any valid Bukkit `PotionEffectType` name.
+any valid Bukkit `PotionEffectType` name. Each `villagers.<role>.sells`/`.buys` entry's `material` also
+accepts any valid Bukkit `Material` name.
 
 ---
 
@@ -548,18 +588,29 @@ Tracking against the [master design plan](./oathbound-master-plan.md)'s build or
       its own, and an ambient in-world signal is left for the existing Polish-pass roadmap bullet.
       Multiple altars per owner were already fully independent (separate Power/radius/decay/cooldown per
       record) with no extra work needed.
-- [ ] Election Oaths — also where `VoteTally` gets wired up to a real ballot backend
+- [x] Villager Shops — thirteen `/oathbound-<role>` commands, one per vanilla `Villager.Profession` that
+      actually trades, each spawning the same rooted/invulnerable Villager trick as the Notary but skinned
+      for its role via `setProfession`. Right-clicking one opens a fixed buy/sell chest menu (not a
+      per-instance builder) backed by an admin-edited list of items and prices per role in `config.yml`;
+      transactions go through the existing `EconomyService`, the same native currency the rest of the
+      plugin uses.
 - [ ] Bounty / Kill Contracts — quantity/group targeting, head-return fulfillment, heat-scaling fees,
       banishment, and the condition-engine hookup for `KillCountClause` itself
 - [ ] Polish pass: particle/sound effects, Notary flavor/skin system, full config-surface tuning
 
 ### Deliberately deferred (see master plan)
 
+- Election Oaths — fully researched (condition-engine changes, a new `election` domain package,
+  GUI/command/persistence surface) but deliberately deferred as too large a single pass; the
+  implementation plan is saved in [`election-oaths-plan.md`](./election-oaths-plan.md) if revisited.
 - Notary skin/flavor customization
 - Per-relationship trust tracking (only a single global Honor score is planned)
 - Release-oath hooks for reducing active banishment sentences
 - Altar Power pooling across multiple altars
 - Any siege/conquest mechanics beyond altar desecration
+
+### Reach Goal
+- Ceremony Designer: Bind agreements between a group and an individual using a special item (like a scepter) and right-click. Individual accepts if they say specified confirmation phrase.  Avoids time setting up contracts that interrupts roleplay, simply whip out the scepter and dub them on the spot and then they get the appropriate ownership/permissions for a knight (or whatever).
 
 ---
 

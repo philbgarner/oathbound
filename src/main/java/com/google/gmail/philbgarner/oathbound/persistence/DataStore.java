@@ -12,6 +12,7 @@ import com.google.gmail.philbgarner.oathbound.oath.EscrowClaim;
 import com.google.gmail.philbgarner.oathbound.oath.LedgerEntry;
 import com.google.gmail.philbgarner.oathbound.oath.Oath;
 import com.google.gmail.philbgarner.oathbound.protection.Protection;
+import com.google.gmail.philbgarner.oathbound.villager.VillagerNpc;
 
 import java.util.List;
 import java.util.Optional;
@@ -97,4 +98,10 @@ public interface DataStore {
     List<OathBoard> loadAllOathBoards() throws DataStoreException;
 
     void deleteOathBoard(UUID id) throws DataStoreException;
+
+    void saveVillagerNpc(VillagerNpc npc) throws DataStoreException;
+
+    List<VillagerNpc> loadAllVillagerNpcs() throws DataStoreException;
+
+    void deleteVillagerNpc(UUID id) throws DataStoreException;
 }

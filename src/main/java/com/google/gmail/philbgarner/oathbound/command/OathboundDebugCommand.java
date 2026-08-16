@@ -23,6 +23,7 @@ import com.google.gmail.philbgarner.oathbound.oath.LedgerEntry;
 import com.google.gmail.philbgarner.oathbound.oath.Oath;
 import com.google.gmail.philbgarner.oathbound.oath.OathService;
 import com.google.gmail.philbgarner.oathbound.oath.OathTransitionException;
+import com.google.gmail.philbgarner.oathbound.villager.VillagerNpc;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
@@ -44,7 +45,7 @@ import java.util.stream.Collectors;
 public final class OathboundDebugCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> TOP_LEVEL =
-            List.of("group", "oath", "ledger", "altar", "honor", "notary", "board");
+            List.of("group", "oath", "ledger", "altar", "honor", "notary", "board", "villager");
     private static final List<String> GROUP_SUB = List.of("create", "transfer", "info", "list");
     private static final List<String> OATH_SUB = List.of("create", "addflag", "confirm", "propose", "seal",
             "activate", "fulfill", "breach", "void", "info", "list");
@@ -52,6 +53,7 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
     private static final List<String> HONOR_SUB = List.of("info", "adjust");
     private static final List<String> NOTARY_SUB = List.of("list", "info", "remove");
     private static final List<String> BOARD_SUB = List.of("list", "info", "remove");
+    private static final List<String> VILLAGER_SUB = List.of("list", "info", "remove");
 
     private final OathboundPlugin plugin;
 
@@ -66,7 +68,7 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
             return true;
         }
         if (args.length == 0) {
-            sender.sendMessage("Usage: /" + label + " <group|oath|ledger|altar|honor|notary|board> ...");
+            sender.sendMessage("Usage: /" + label + " <group|oath|ledger|altar|honor|notary|board|villager> ...");
             return true;
         }
         try {
@@ -78,6 +80,7 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
                 case "honor" -> handleHonor(player, args);
                 case "notary" -> handleNotary(player, args);
                 case "board" -> handleBoard(player, args);
+                case "villager" -> handleVillager(player, args);
                 default -> sender.sendMessage("Unknown top-level command: " + args[0]);
             }
         } catch (OathTransitionException e) {
@@ -545,6 +548,67 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
         sender.sendMessage("Removed board.");
     }
 
+    // ---- villager ----
+
+    private void handleVillager(Player sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage("Usage: /oathbound-debug villager <list|info|remove> ...");
+            return;
+        }
+        switch (args[1].toLowerCase()) {
+            case "list" -> villagerList(sender);
+            case "info" -> villagerInfo(sender, args);
+            case "remove" -> villagerRemove(sender, args);
+            default -> sender.sendMessage("Unknown villager subcommand: " + args[1]);
+        }
+    }
+
+    private void villagerList(Player sender) {
+        if (plugin.villagerNpcCache().isEmpty()) {
+            sender.sendMessage("No villager shop NPCs.");
+            return;
+        }
+        for (VillagerNpc npc : plugin.villagerNpcCache().values()) {
+            sender.sendMessage(npc.id() + " '" + npc.name() + "' role=" + npc.role() + " owner=" + npc.owner()
+                    + " loc=" + npc.location());
+        }
+    }
+
+    private void villagerInfo(Player sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("Usage: /oathbound-debug villager info <villagerNpcId>");
+            return;
+        }
+        Optional<VillagerNpc> npc = findVillagerNpc(args[2]);
+        if (npc.isEmpty()) {
+            sender.sendMessage("No such villager shop NPC: " + args[2]);
+            return;
+        }
+        VillagerNpc n = npc.get();
+        sender.sendMessage("Villager " + n.id() + " '" + n.name() + "' role=" + n.role() + " owner=" + n.owner());
+        sender.sendMessage("  entityId=" + n.entityId() + " location=" + n.location() + " installedAt=" + n.installedAt());
+    }
+
+    private void villagerRemove(Player sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("Usage: /oathbound-debug villager remove <villagerNpcId>");
+            return;
+        }
+        Optional<VillagerNpc> npc = findVillagerNpc(args[2]);
+        if (npc.isEmpty()) {
+            sender.sendMessage("No such villager shop NPC: " + args[2]);
+            return;
+        }
+        VillagerNpc n = npc.get();
+        Entity entity = Bukkit.getEntity(n.entityId());
+        if (entity != null) {
+            entity.remove();
+        }
+        plugin.villagerNpcCache().remove(n.id());
+        plugin.deleteVillagerNpcAsync(n.id());
+        sender.sendMessage("Removed villager shop NPC '" + n.name() + "'.");
+    }
+
     // ---- lookups ----
 
     private Optional<Altar> findAltar(String idString) {
@@ -587,6 +651,14 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
         }
     }
 
+    private Optional<VillagerNpc> findVillagerNpc(String idString) {
+        try {
+            return Optional.ofNullable(plugin.villagerNpcCache().get(UUID.fromString(idString)));
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
+        }
+    }
+
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
@@ -600,6 +672,7 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
                 case "honor" -> filter(HONOR_SUB, args[1]);
                 case "notary" -> filter(NOTARY_SUB, args[1]);
                 case "board" -> filter(BOARD_SUB, args[1]);
+                case "villager" -> filter(VILLAGER_SUB, args[1]);
                 default -> new ArrayList<>();
             };
         }

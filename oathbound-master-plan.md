@@ -284,6 +284,34 @@ Two front-ends over one underlying `KillCountClause` system: PvP bounties and Pv
 
 ---
 
+## 13. Villager Shop NPCs
+
+Not part of the original numbered build order — added after the fact as a lightweight, low-cost-per-NPC
+sibling to the NPC Notary (§7), for filling out a village with shopkeepers without full AI/pathfinding
+overhead per villager.
+
+- Same physical trick as the Notary: a standard `Villager` entity, invulnerable, `setAI(false)`-rooted to
+  its install location. Unlike the Notary, `setProfession(...)` is set at spawn to the matching vanilla
+  profession, so each shop NPC visually reads as its role for free — the Notary's own "skin/profession
+  customization" is still explicitly deferred (§7), this is a separate, simpler mechanism for a separate
+  feature.
+- One role per vanilla `Villager.Profession` that actually trades (Armorer, Butcher, Cartographer,
+  Cleric, Farmer, Fisherman, Fletcher, Leatherworker, Librarian, Mason, Shepherd, Toolsmith,
+  Weaponsmith — `NONE`/`NITWIT` excluded, neither trades in vanilla either), each with its own
+  `/oathbound-<role> install <name...>` command mirroring the Notary's install shape exactly.
+- **Fixed, admin-edited stock per role**, not a per-instance builder — every NPC of a given role shares
+  one `sells`/`buys` list of `{material, price}` entries configured in `config.yml`
+  (`villagers.<role>.sells` / `.buys`). Deliberately simpler than the Notary's oath-builder chest menu:
+  right-clicking opens a static buy/sell menu, click an offer to transact 1 unit at a time.
+- Transactions run through the existing native `EconomyService` (§3) — buying withdraws from the
+  player's balance and grants the item, selling takes the item and deposits into the player's balance.
+  No new currency or pricing system introduced.
+- Four roles (fisherman, mason, farmer, librarian) ship with a small illustrative default stock; the
+  remaining nine start with empty lists until an admin configures them — installing one still works, its
+  shop menu just opens empty.
+
+---
+
 ## Build Order
 
 1. Core Oath data model + lifecycle state machine + Ledger

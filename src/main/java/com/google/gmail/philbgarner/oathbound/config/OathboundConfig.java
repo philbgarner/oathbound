@@ -3,6 +3,9 @@ package com.google.gmail.philbgarner.oathbound.config;
 import com.google.gmail.philbgarner.oathbound.economy.Currency;
 import com.google.gmail.philbgarner.oathbound.group.GroupTier;
 import com.google.gmail.philbgarner.oathbound.honor.HonorTiers;
+import com.google.gmail.philbgarner.oathbound.villager.NpcRole;
+import com.google.gmail.philbgarner.oathbound.villager.VillagerRoleTrades;
+import com.google.gmail.philbgarner.oathbound.villager.VillagerTradeOffer;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -60,6 +63,7 @@ public final class OathboundConfig {
     private final Duration notaryNegotiationExpiry;
     private final Material oathBoardMaterial;
     private final int oathBoardFeedSize;
+    private final Map<NpcRole, VillagerRoleTrades> villagerTrades;
 
     private OathboundConfig(Path sqliteFile, int resolverDepthCutoff, List<Currency> currencies,
                              Material altarCapstoneMaterial, double altarPowerRadiusScale,
@@ -74,7 +78,8 @@ public final class OathboundConfig {
                              HonorTiers honorTiers, PotionEffectType honorBloodOathBreachDebuffEffect,
                              Duration honorBloodOathBreachDebuffDuration, int honorBloodOathBreachDebuffAmplifier,
                              Material sealingTableMaterial, int notaryPendingOfferCap,
-                             Duration notaryNegotiationExpiry, Material oathBoardMaterial, int oathBoardFeedSize) {
+                             Duration notaryNegotiationExpiry, Material oathBoardMaterial, int oathBoardFeedSize,
+                             Map<NpcRole, VillagerRoleTrades> villagerTrades) {
         this.sqliteFile = sqliteFile;
         this.resolverDepthCutoff = resolverDepthCutoff;
         this.currencies = currencies;
@@ -105,6 +110,7 @@ public final class OathboundConfig {
         this.notaryNegotiationExpiry = notaryNegotiationExpiry;
         this.oathBoardMaterial = oathBoardMaterial;
         this.oathBoardFeedSize = oathBoardFeedSize;
+        this.villagerTrades = villagerTrades;
     }
 
     public static OathboundConfig load(FileConfiguration config, Path dataFolder) {
@@ -202,6 +208,14 @@ public final class OathboundConfig {
         }
         int oathBoardFeedSize = config.getInt("oath-board.feed-size", 50);
 
+        Map<NpcRole, VillagerRoleTrades> villagerTrades = new EnumMap<>(NpcRole.class);
+        for (NpcRole role : NpcRole.values()) {
+            String base = "villagers." + role.configKey();
+            List<VillagerTradeOffer> sells = parseTradeOffers(config.getMapList(base + ".sells"));
+            List<VillagerTradeOffer> buys = parseTradeOffers(config.getMapList(base + ".buys"));
+            villagerTrades.put(role, new VillagerRoleTrades(sells, buys));
+        }
+
         return new OathboundConfig(dataFolder.resolve(sqliteFileName), depthCutoff, currencies,
                 capstoneMaterial, powerRadiusScale, Map.copyOf(tierMultipliers),
                 altarDecayDays, altarCriticalThreshold, altarDecayingThreshold, altarXpLootConversionRate,
@@ -210,7 +224,21 @@ public final class OathboundConfig {
                 lockToolMaterial, fulfillGainBase, breachLossBase, bloodOathMultiplier, minForBloodOath,
                 honorTiers, debuffEffect, debuffDuration, debuffAmplifier,
                 sealingTableMaterial, notaryPendingOfferCap, notaryNegotiationExpiry,
-                oathBoardMaterial, oathBoardFeedSize);
+                oathBoardMaterial, oathBoardFeedSize, Map.copyOf(villagerTrades));
+    }
+
+    private static List<VillagerTradeOffer> parseTradeOffers(List<Map<?, ?>> raw) {
+        List<VillagerTradeOffer> result = new ArrayList<>();
+        for (Map<?, ?> entry : raw) {
+            String materialName = String.valueOf(entry.get("material"));
+            Material material = Material.matchMaterial(materialName);
+            if (material == null) {
+                throw new IllegalArgumentException("Unknown villager trade material: " + materialName);
+            }
+            long price = ((Number) entry.get("price")).longValue();
+            result.add(new VillagerTradeOffer(material, price));
+        }
+        return result;
     }
 
     public Path sqliteFile() {
@@ -331,5 +359,9 @@ public final class OathboundConfig {
 
     public int oathBoardFeedSize() {
         return oathBoardFeedSize;
+    }
+
+    public Map<NpcRole, VillagerRoleTrades> villagerTrades() {
+        return villagerTrades;
     }
 }

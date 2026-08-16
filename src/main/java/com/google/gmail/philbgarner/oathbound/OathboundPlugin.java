@@ -9,6 +9,7 @@ import com.google.gmail.philbgarner.oathbound.command.OathboundDebugCommand;
 import com.google.gmail.philbgarner.oathbound.command.OathboundNotaryCommand;
 import com.google.gmail.philbgarner.oathbound.command.OathboundOathCommand;
 import com.google.gmail.philbgarner.oathbound.command.OathboundTradeCommand;
+import com.google.gmail.philbgarner.oathbound.command.OathboundVillagerCommand;
 import com.google.gmail.philbgarner.oathbound.config.OathboundConfig;
 import com.google.gmail.philbgarner.oathbound.contract.TradeOffer;
 import com.google.gmail.philbgarner.oathbound.economy.EconomyService;
@@ -25,6 +26,7 @@ import com.google.gmail.philbgarner.oathbound.gui.OathBoardGuiListener;
 import com.google.gmail.philbgarner.oathbound.gui.OathBuilderListener;
 import com.google.gmail.philbgarner.oathbound.gui.TradeGuiListener;
 import com.google.gmail.philbgarner.oathbound.gui.ProtectionLockGuiListener;
+import com.google.gmail.philbgarner.oathbound.gui.VillagerShopGuiListener;
 import com.google.gmail.philbgarner.oathbound.honor.HonorCalculator;
 import com.google.gmail.philbgarner.oathbound.honor.HonorService;
 import com.google.gmail.philbgarner.oathbound.honor.PlayerHonor;
@@ -42,6 +44,7 @@ import com.google.gmail.philbgarner.oathbound.listener.OathBoardBroadcastListene
 import com.google.gmail.philbgarner.oathbound.listener.OathDraftPromptListener;
 import com.google.gmail.philbgarner.oathbound.listener.ProtectionLockListener;
 import com.google.gmail.philbgarner.oathbound.listener.SealingTableListener;
+import com.google.gmail.philbgarner.oathbound.listener.VillagerNpcInteractListener;
 import com.google.gmail.philbgarner.oathbound.notary.Notary;
 import com.google.gmail.philbgarner.oathbound.oath.ConditionEngine;
 import com.google.gmail.philbgarner.oathbound.oath.DeathTracker;
@@ -56,6 +59,8 @@ import com.google.gmail.philbgarner.oathbound.persistence.DataStore;
 import com.google.gmail.philbgarner.oathbound.persistence.DataStoreException;
 import com.google.gmail.philbgarner.oathbound.persistence.sqlite.SqliteDataStore;
 import com.google.gmail.philbgarner.oathbound.protection.Protection;
+import com.google.gmail.philbgarner.oathbound.villager.NpcRole;
+import com.google.gmail.philbgarner.oathbound.villager.VillagerNpc;
 import org.bukkit.Bukkit;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
@@ -101,6 +106,7 @@ public final class OathboundPlugin extends JavaPlugin {
     private final Map<UUID, Protection> protectionCache = new ConcurrentHashMap<>();
     private final Map<UUID, Notary> notaryCache = new ConcurrentHashMap<>();
     private final Map<UUID, OathBoard> oathBoardCache = new ConcurrentHashMap<>();
+    private final Map<UUID, VillagerNpc> villagerNpcCache = new ConcurrentHashMap<>();
 
     @Override
     public void onEnable() {
@@ -191,6 +197,15 @@ public final class OathboundPlugin extends JavaPlugin {
             notaryCommand.setTabCompleter(executor);
         }
 
+        for (NpcRole role : NpcRole.values()) {
+            PluginCommand villagerCommand = getCommand(role.commandName());
+            if (villagerCommand != null) {
+                OathboundVillagerCommand executor = new OathboundVillagerCommand(this, role);
+                villagerCommand.setExecutor(executor);
+                villagerCommand.setTabCompleter(executor);
+            }
+        }
+
         getServer().getPluginManager().registerEvents(new AltarConsecrationListener(this), this);
         getServer().getPluginManager().registerEvents(new AltarInteractListener(this), this);
         getServer().getPluginManager().registerEvents(new AltarDesecrationListener(this), this);
@@ -209,6 +224,8 @@ public final class OathboundPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(oathDraftPromptListener, this);
         getServer().getPluginManager().registerEvents(new OathBoardBlockListener(this), this);
         getServer().getPluginManager().registerEvents(new OathBoardGuiListener(this), this);
+        getServer().getPluginManager().registerEvents(new VillagerNpcInteractListener(this), this);
+        getServer().getPluginManager().registerEvents(new VillagerShopGuiListener(this), this);
 
         getServer().getScheduler().runTaskTimer(this, this::runConditionEngineTick, 100L, 100L);
 
@@ -346,11 +363,15 @@ public final class OathboundPlugin extends JavaPlugin {
             for (OathBoard board : dataStore.loadAllOathBoards()) {
                 oathBoardCache.put(board.id(), board);
             }
+            for (VillagerNpc npc : dataStore.loadAllVillagerNpcs()) {
+                villagerNpcCache.put(npc.id(), npc);
+            }
             getLogger().info("Loaded " + groupCache.size() + " group(s), " + oathCache.size() + " oath(s), "
                     + altarCache.size() + " altar(s), " + tradeOfferCache.size() + " trade offer(s), "
                     + deathRecordCount + " death record(s), " + escrowClaimCache.size() + " escrow claim(s), "
                     + protectionCache.size() + " protection(s), " + honorCount + " honor record(s), "
-                    + notaryCache.size() + " notary/notaries, " + oathBoardCache.size() + " oath board(s) from storage.");
+                    + notaryCache.size() + " notary/notaries, " + oathBoardCache.size() + " oath board(s), "
+                    + villagerNpcCache.size() + " villager shop NPC(s) from storage.");
         } catch (DataStoreException e) {
             getLogger().log(Level.SEVERE, "Failed to load persisted state", e);
         }
@@ -496,6 +517,26 @@ public final class OathboundPlugin extends JavaPlugin {
         });
     }
 
+    public void persistVillagerNpcAsync(VillagerNpc npc) {
+        persistenceExecutor.submit(() -> {
+            try {
+                dataStore.saveVillagerNpc(npc);
+            } catch (DataStoreException e) {
+                getLogger().log(Level.SEVERE, "Failed to persist villager npc " + npc.id(), e);
+            }
+        });
+    }
+
+    public void deleteVillagerNpcAsync(UUID id) {
+        persistenceExecutor.submit(() -> {
+            try {
+                dataStore.deleteVillagerNpc(id);
+            } catch (DataStoreException e) {
+                getLogger().log(Level.SEVERE, "Failed to delete villager npc " + id, e);
+            }
+        });
+    }
+
     public OathboundConfig oathboundConfig() {
         return oathboundConfig;
     }
@@ -570,5 +611,9 @@ public final class OathboundPlugin extends JavaPlugin {
 
     public Map<UUID, OathBoard> oathBoardCache() {
         return oathBoardCache;
+    }
+
+    public Map<UUID, VillagerNpc> villagerNpcCache() {
+        return villagerNpcCache;
     }
 }

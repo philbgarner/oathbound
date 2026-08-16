@@ -21,6 +21,7 @@ import com.google.gmail.philbgarner.oathbound.persistence.dto.OathDto;
 import com.google.gmail.philbgarner.oathbound.persistence.dto.TradeOfferDto;
 import com.google.gmail.philbgarner.oathbound.persistence.json.GsonFactory;
 import com.google.gmail.philbgarner.oathbound.protection.Protection;
+import com.google.gmail.philbgarner.oathbound.villager.VillagerNpc;
 import com.google.gson.Gson;
 
 import java.io.IOException;
@@ -52,7 +53,8 @@ public final class SqliteDataStore implements DataStore {
             "db/migrations/0006_protections.sql",
             "db/migrations/0007_honor.sql",
             "db/migrations/0008_notaries.sql",
-            "db/migrations/0009_oath_boards.sql"
+            "db/migrations/0009_oath_boards.sql",
+            "db/migrations/0010_villager_npcs.sql"
     );
 
     private final Path databaseFile;
@@ -623,6 +625,43 @@ public final class SqliteDataStore implements DataStore {
             stmt.executeUpdate();
         } catch (SQLException e) {
             throw new DataStoreException("Failed to delete oath board " + id, e);
+        }
+    }
+
+    @Override
+    public synchronized void saveVillagerNpc(VillagerNpc npc) throws DataStoreException {
+        String json = gson.toJson(npc);
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "INSERT INTO villager_npcs(id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data")) {
+            stmt.setString(1, npc.id().toString());
+            stmt.setString(2, json);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to save villager npc " + npc.id(), e);
+        }
+    }
+
+    @Override
+    public synchronized List<VillagerNpc> loadAllVillagerNpcs() throws DataStoreException {
+        List<VillagerNpc> result = new ArrayList<>();
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT data FROM villager_npcs")) {
+            while (rs.next()) {
+                result.add(gson.fromJson(rs.getString(1), VillagerNpc.class));
+            }
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to load all villager npcs", e);
+        }
+        return result;
+    }
+
+    @Override
+    public synchronized void deleteVillagerNpc(UUID id) throws DataStoreException {
+        try (PreparedStatement stmt = connection.prepareStatement("DELETE FROM villager_npcs WHERE id = ?")) {
+            stmt.setString(1, id.toString());
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to delete villager npc " + id, e);
         }
     }
 }

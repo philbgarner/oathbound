@@ -108,3 +108,69 @@ oath-board:
   # How many of the most recent Ledger entries to scan when building a board's feed. Not a cap on
   # how many postings can show - just how far back the live query looks.
   feed-size: 50
+
+villagers:
+  # Each role's shop NPCs all share one fixed buy/sell list, edited here - not a per-instance builder.
+  # 'sells' = the NPC sells to the player (player pays, receives the item).
+  # 'buys'  = the NPC buys from the player (player gives the item, receives currency).
+  # Currency is always the server's default currency (economy.currencies, first entry). Roles left
+  # with empty lists still install and open a (empty) shop menu - fill them in when ready.
+  fisherman:
+    sells:
+      - {material: COD, price: 2}
+      - {material: SALMON, price: 3}
+      - {material: FISHING_ROD, price: 15}
+    buys:
+      - {material: TROPICAL_FISH, price: 1}
+      - {material: PUFFERFISH, price: 1}
+  mason:
+    sells:
+      - {material: BRICK, price: 1}
+      - {material: STONE_BRICKS, price: 2}
+      - {material: CHISELED_STONE_BRICKS, price: 4}
+    buys:
+      - {material: STONE, price: 1}
+      - {material: COBBLESTONE, price: 1}
+  farmer:
+    sells:
+      - {material: BREAD, price: 3}
+      - {material: PUMPKIN_PIE, price: 5}
+      - {material: BONE_MEAL, price: 2}
+    buys:
+      - {material: WHEAT, price: 1}
+      - {material: CARROT, price: 1}
+      - {material: POTATO, price: 1}
+  librarian:
+    sells:
+      - {material: BOOK, price: 3}
+      - {material: PAPER, price: 1}
+      - {material: BOOKSHELF, price: 12}
+    buys:
+      - {material: WRITTEN_BOOK, price: 5}
+  armorer:
+    sells: []
+    buys: []
+  butcher:
+    sells: []
+    buys: []
+  cartographer:
+    sells: []
+    buys: []
+  cleric:
+    sells: []
+    buys: []
+  fletcher:
+    sells: []
+    buys: []
+  leatherworker:
+    sells: []
+    buys: []
+  shepherd:
+    sells: []
+    buys: []
+  toolsmith:
+    sells: []
+    buys: []
+  weaponsmith:
+    sells: []
+    buys: []

@@ -17,3 +17,42 @@ commands:
   oathbound-notary:
     description: Install a Notary NPC at your current location.
     usage: /<command> install <name...>
+  oathbound-armorer:
+    description: Install an Armorer shop NPC at your current location.
+    usage: /<command> install <name...>
+  oathbound-butcher:
+    description: Install a Butcher shop NPC at your current location.
+    usage: /<command> install <name...>
+  oathbound-cartographer:
+    description: Install a Cartographer shop NPC at your current location.
+    usage: /<command> install <name...>
+  oathbound-cleric:
+    description: Install a Cleric shop NPC at your current location.
+    usage: /<command> install <name...>
+  oathbound-farmer:
+    description: Install a Farmer shop NPC at your current location.
+    usage: /<command> install <name...>
+  oathbound-fisherman:
+    description: Install a Fisherman shop NPC at your current location.
+    usage: /<command> install <name...>
+  oathbound-fletcher:
+    description: Install a Fletcher shop NPC at your current location.
+    usage: /<command> install <name...>
+  oathbound-leatherworker:
+    description: Install a Leatherworker shop NPC at your current location.
+    usage: /<command> install <name...>
+  oathbound-librarian:
+    description: Install a Librarian shop NPC at your current location.
+    usage: /<command> install <name...>
+  oathbound-mason:
+    description: Install a Mason shop NPC at your current location.
+    usage: /<command> install <name...>
+  oathbound-shepherd:
+    description: Install a Shepherd shop NPC at your current location.
+    usage: /<command> install <name...>
+  oathbound-toolsmith:
+    description: Install a Toolsmith shop NPC at your current location.
+    usage: /<command> install <name...>
+  oathbound-weaponsmith:
+    description: Install a Weaponsmith shop NPC at your current location.
+    usage: /<command> install <name...>
