@@ -1,5 +1,6 @@
 package com.google.gmail.philbgarner.oathbound.oath;
 
+import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticState;
 import com.google.gmail.philbgarner.oathbound.economy.Currency;
 import com.google.gmail.philbgarner.oathbound.group.EntityRef;
 import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
@@ -37,6 +38,15 @@ public sealed interface Clause {
      * step. {@code mobTypeName} is a plain {@code org.bukkit.entity.EntityType} name rather than the
      * enum itself, since this package is Bukkit-free by design. */
     record MobKillClause(PlayerRef obligor, String mobTypeName, int quantity) implements Clause {
+    }
+
+    /** Forces a diplomatic state change between two groups once {@code condition} is met - the diplomacy
+     * counterpart to {@link TransferClause}'s ownership reassignment. {@code groupA}/{@code groupB} may
+     * name a liege or a vassal interchangeably - execution always resolves to the root of each chain (see
+     * {@code diplomacy.DiplomacyService}), since diplomatic authority belongs to the most senior group in
+     * an ownership chain, not any vassal under it. */
+    record DiplomacyClause(ProtectionGroupRef groupA, ProtectionGroupRef groupB, DiplomaticState newState,
+                            Condition condition) implements Clause {
     }
 
     record ReleaseStep(double fraction, Condition condition) {

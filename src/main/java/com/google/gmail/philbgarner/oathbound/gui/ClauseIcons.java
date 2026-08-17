@@ -32,6 +32,9 @@ final class ClauseIcons {
                     "Obligor: " + playerName(mobKill.obligor()),
                     "Mob: " + mobKill.mobTypeName(),
                     "Required kills: " + mobKill.quantity());
+            case Clause.DiplomacyClause diplomacy -> GuiItems.button(Material.WHITE_BANNER, "Treaty",
+                    "Groups: " + groupName(diplomacy.groupA(), groupCache) + " <-> " + groupName(diplomacy.groupB(), groupCache),
+                    "Becomes: " + diplomacy.newState());
             case Clause.EscrowClause escrow -> GuiItems.button(Material.CHEST, "Escrow", "(not supported here)");
         };
     }

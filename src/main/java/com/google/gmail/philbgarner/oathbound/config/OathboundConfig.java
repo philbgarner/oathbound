@@ -82,6 +82,8 @@ public final class OathboundConfig {
     private final BanishmentPenSpec banishmentPen;
     private final List<PveContractDefinition> pveContracts;
     private final List<CeremonyTemplateDefinition> ceremonyTemplates;
+    private final long diplomacyBetrayalHonorPenalty;
+    private final boolean pvpRestrictToDeclaredWars;
 
     private OathboundConfig(Path sqliteFile, int resolverDepthCutoff, List<Currency> currencies,
                              Material altarCapstoneMaterial, double altarPowerRadiusScale,
@@ -103,7 +105,8 @@ public final class OathboundConfig {
                              Duration bountyAbandonInactivityThreshold, long banishmentMinHours, long banishmentMaxHours,
                              long banishmentHoursPerCurrencyUnit, long banishmentStackCapHours,
                              BanishmentPenSpec banishmentPen, List<PveContractDefinition> pveContracts,
-                             List<CeremonyTemplateDefinition> ceremonyTemplates) {
+                             List<CeremonyTemplateDefinition> ceremonyTemplates, long diplomacyBetrayalHonorPenalty,
+                             boolean pvpRestrictToDeclaredWars) {
         this.sqliteFile = sqliteFile;
         this.resolverDepthCutoff = resolverDepthCutoff;
         this.currencies = currencies;
@@ -149,6 +152,8 @@ public final class OathboundConfig {
         this.banishmentPen = banishmentPen;
         this.pveContracts = pveContracts;
         this.ceremonyTemplates = ceremonyTemplates;
+        this.diplomacyBetrayalHonorPenalty = diplomacyBetrayalHonorPenalty;
+        this.pvpRestrictToDeclaredWars = pvpRestrictToDeclaredWars;
     }
 
     public static OathboundConfig load(FileConfiguration config, Path dataFolder) {
@@ -276,6 +281,8 @@ public final class OathboundConfig {
 
         List<PveContractDefinition> pveContracts = parsePveContracts(config.getMapList("pve-contracts"));
         List<CeremonyTemplateDefinition> ceremonyTemplates = parseCeremonyTemplates(config.getMapList("ceremony-templates"));
+        long diplomacyBetrayalHonorPenalty = config.getLong("diplomacy.betrayal-honor-penalty", 20L);
+        boolean pvpRestrictToDeclaredWars = config.getBoolean("pvp.restrict-to-declared-wars", false);
 
         return new OathboundConfig(dataFolder.resolve(sqliteFileName), depthCutoff, currencies,
                 capstoneMaterial, powerRadiusScale, Map.copyOf(tierMultipliers),
@@ -289,7 +296,8 @@ public final class OathboundConfig {
                 bountyFeeBase, bountyHeatFeeMultiplier, bountyHeatDecayWindow, bountyMaxPlacementsPer24h,
                 bountyBreachDiscountWindow, bountyBreachDiscountFraction, bountyAbandonInactivityThreshold,
                 banishmentMinHours, banishmentMaxHours, banishmentHoursPerCurrencyUnit, banishmentStackCapHours,
-                banishmentPen, pveContracts, ceremonyTemplates);
+                banishmentPen, pveContracts, ceremonyTemplates, diplomacyBetrayalHonorPenalty,
+                pvpRestrictToDeclaredWars);
     }
 
     private static List<PveContractDefinition> parsePveContracts(List<Map<?, ?>> raw) {
@@ -580,5 +588,13 @@ public final class OathboundConfig {
 
     public List<CeremonyTemplateDefinition> ceremonyTemplates() {
         return ceremonyTemplates;
+    }
+
+    public long diplomacyBetrayalHonorPenalty() {
+        return diplomacyBetrayalHonorPenalty;
+    }
+
+    public boolean pvpRestrictToDeclaredWars() {
+        return pvpRestrictToDeclaredWars;
     }
 }

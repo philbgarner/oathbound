@@ -1,5 +1,7 @@
 package com.google.gmail.philbgarner.oathbound.oath;
 
+import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomacyService;
+import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticState;
 import com.google.gmail.philbgarner.oathbound.economy.Currency;
 import com.google.gmail.philbgarner.oathbound.economy.EconomyService;
 import com.google.gmail.philbgarner.oathbound.group.GroupTier;
@@ -38,6 +40,7 @@ final class ConditionEngineTest {
     private DeathTracker deathTracker;
     private MobKillTracker mobKillTracker;
     private ManualConfirmStore manualConfirms;
+    private DiplomacyService diplomacyService;
     private ConditionEngine engine;
 
     @BeforeEach
@@ -50,8 +53,10 @@ final class ConditionEngineTest {
         deathTracker = new DeathTracker();
         mobKillTracker = new MobKillTracker();
         manualConfirms = new ManualConfirmStore();
+        diplomacyService = new DiplomacyService(ownershipResolver);
         engine = new ConditionEngine(oathService, ownershipResolver, economyService,
-                id -> Optional.ofNullable(groups.get(id)), deathTracker, mobKillTracker, manualConfirms);
+                id -> Optional.ofNullable(groups.get(id)), deathTracker, mobKillTracker, manualConfirms,
+                diplomacyService);
     }
 
     private ProtectionGroup group(PlayerRef owner) {
@@ -268,6 +273,25 @@ final class ConditionEngineTest {
         engine.tick(List.of(oath), Instant.now());
 
         assertEquals(bob, farm.owner());
+        assertTrue(oath.isClauseFulfilled(0));
+        assertEquals(OathState.FULFILLED, oath.state());
+    }
+
+    @Test
+    void diplomacyClauseSetsRelationOnceConditionMet() {
+        ProtectionGroup kingdomA = new ProtectionGroup(UUID.randomUUID(), "Cream", alice, GroupTier.KINGDOM);
+        ProtectionGroup kingdomB = new ProtectionGroup(UUID.randomUUID(), "Petroleum", bob, GroupTier.KINGDOM);
+        groups.put(kingdomA.id(), kingdomA);
+        groups.put(kingdomB.id(), kingdomB);
+
+        Oath oath = activeOathWithClauses(new Clause.DiplomacyClause(
+                new ProtectionGroupRef(kingdomA.id()), new ProtectionGroupRef(kingdomB.id()),
+                DiplomaticState.PEACE, new Condition.Immediate()));
+
+        ConditionEngine.TickResult result = engine.tick(List.of(oath), Instant.now());
+
+        assertEquals(DiplomaticState.PEACE, diplomacyService.currentState(kingdomA.id(), kingdomB.id()));
+        assertEquals(1, result.changedRelations().size());
         assertTrue(oath.isClauseFulfilled(0));
         assertEquals(OathState.FULFILLED, oath.state());
     }

@@ -54,6 +54,32 @@ public final class OwnershipResolver {
     }
 
     /**
+     * Walks {@code start}'s owner chain and returns the topmost {@link ProtectionGroup} in it - the last
+     * group before the chain's owner stops being another group (a player, or the chain can't be resolved
+     * further). This is what "a vassal's diplomatic relations are its liege's relations, all the way up"
+     * resolves through (see the {@code diplomacy} package). Fail-safe like {@link #resolveTerminalOwner}:
+     * an unresolvable group or a chain that hits the depth cutoff just returns wherever it stopped, rather
+     * than silently escalating authority through a broken or cyclic chain.
+     */
+    public ProtectionGroupRef resolveRootGroup(ProtectionGroupRef start) {
+        Objects.requireNonNull(start, "start");
+        ProtectionGroupRef current = start;
+        int hops = 0;
+        while (hops < depthCutoff) {
+            Optional<ProtectionGroup> group = lookup.findById(current.groupId());
+            if (group.isEmpty()) {
+                return current;
+            }
+            if (!(group.get().owner() instanceof ProtectionGroupRef parentRef)) {
+                return current;
+            }
+            current = parentRef;
+            hops++;
+        }
+        return current;
+    }
+
+    /**
      * True if assigning {@code proposedOwner} as {@code groupBeingAssigned}'s owner would make the group
      * its own ancestor. Also true (fail-safe reject, not a silent allow) if the chain can't be proven
      * cycle-free within the depth cutoff.

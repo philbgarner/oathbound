@@ -12,6 +12,8 @@ import com.google.gmail.philbgarner.oathbound.bounty.BountyTarget;
 import com.google.gmail.philbgarner.oathbound.bounty.PveContractProgress;
 import com.google.gmail.philbgarner.oathbound.bounty.ReturnLocation;
 import com.google.gmail.philbgarner.oathbound.contract.TradeOffer;
+import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticRelation;
+import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticState;
 import com.google.gmail.philbgarner.oathbound.economy.Currency;
 import com.google.gmail.philbgarner.oathbound.economy.PlayerBalance;
 import com.google.gmail.philbgarner.oathbound.group.EntityRef;
@@ -264,6 +266,37 @@ final class SqliteDataStoreTest {
             assertEquals(killer, records.get(0).killer());
             assertEquals("RAVAGER", records.get(0).mobTypeName());
             assertEquals(timestamp, records.get(0).timestamp());
+        } finally {
+            second.close();
+        }
+    }
+
+    @Test
+    void diplomaticRelationRoundTripsAndUpsertsAcrossAReopenedConnection(@TempDir Path tempDir) throws DataStoreException {
+        Path dbFile = tempDir.resolve("oathbound.db");
+        UUID groupA = UUID.randomUUID();
+        UUID groupB = UUID.randomUUID();
+        Instant since = Instant.now();
+
+        SqliteDataStore first = new SqliteDataStore(dbFile);
+        first.initialize();
+        try {
+            first.saveDiplomaticRelation(new DiplomaticRelation(groupA, groupB, DiplomaticState.WAR, since));
+            // Re-saving the same pair with a new state must update in place, not add a second row.
+            first.saveDiplomaticRelation(new DiplomaticRelation(groupA, groupB, DiplomaticState.PEACE, since));
+        } finally {
+            first.close();
+        }
+
+        SqliteDataStore second = new SqliteDataStore(dbFile);
+        second.initialize();
+        try {
+            List<DiplomaticRelation> relations = second.loadAllDiplomaticRelations();
+            assertEquals(1, relations.size());
+            assertEquals(groupA, relations.get(0).groupA());
+            assertEquals(groupB, relations.get(0).groupB());
+            assertEquals(DiplomaticState.PEACE, relations.get(0).state());
+            assertEquals(since, relations.get(0).since());
         } finally {
             second.close();
         }

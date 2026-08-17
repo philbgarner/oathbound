@@ -15,6 +15,8 @@ import com.google.gmail.philbgarner.oathbound.bounty.PveContractProgress;
 import com.google.gmail.philbgarner.oathbound.bounty.PveContractService;
 import com.google.gmail.philbgarner.oathbound.ceremony.CeremonyService;
 import com.google.gmail.philbgarner.oathbound.command.OathboundBountyCommand;
+import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomacyService;
+import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticRelation;
 import com.google.gmail.philbgarner.oathbound.command.OathboundDebugCommand;
 import com.google.gmail.philbgarner.oathbound.command.OathboundNotaryCommand;
 import com.google.gmail.philbgarner.oathbound.command.OathboundOathCommand;
@@ -53,6 +55,7 @@ import com.google.gmail.philbgarner.oathbound.listener.BountyKillListener;
 import com.google.gmail.philbgarner.oathbound.listener.BountyLoginNoticeListener;
 import com.google.gmail.philbgarner.oathbound.listener.CeremonyChatListener;
 import com.google.gmail.philbgarner.oathbound.listener.CeremonyInteractListener;
+import com.google.gmail.philbgarner.oathbound.listener.DiplomaticPvpGuardListener;
 import com.google.gmail.philbgarner.oathbound.listener.MobKillTrackingListener;
 import com.google.gmail.philbgarner.oathbound.listener.PveKillListener;
 import com.google.gmail.philbgarner.oathbound.listener.ClaimBuildGuardListener;
@@ -128,6 +131,7 @@ public final class OathboundPlugin extends JavaPlugin {
     private PveContractService pveContractService;
     private CeremonyService ceremonyService;
     private CeremonyChatListener ceremonyChatListener;
+    private DiplomacyService diplomacyService;
 
     private final Map<UUID, ProtectionGroup> groupCache = new ConcurrentHashMap<>();
     private final Map<UUID, Oath> oathCache = new ConcurrentHashMap<>();
@@ -203,8 +207,10 @@ public final class OathboundPlugin extends JavaPlugin {
                 id -> Optional.ofNullable(groupCache.get(id)), oathboundConfig.resolverDepthCutoff());
         altarRadiusCalculator = new AltarRadiusCalculator(
                 oathboundConfig.altarPowerRadiusScale(), oathboundConfig.altarTierRadiusMultipliers());
+        diplomacyService = new DiplomacyService(ownershipResolver);
         conditionEngine = new ConditionEngine(oathService, ownershipResolver, economyService,
-                id -> Optional.ofNullable(groupCache.get(id)), deathTracker, mobKillTracker, manualConfirmStore);
+                id -> Optional.ofNullable(groupCache.get(id)), deathTracker, mobKillTracker, manualConfirmStore,
+                diplomacyService);
         escrowExpiryService = new EscrowExpiryService();
         negotiationExpiryService = new NegotiationExpiryService();
         altarDecaySweepService = new AltarDecaySweepService();
@@ -300,6 +306,9 @@ public final class OathboundPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new MobKillTrackingListener(this), this);
         getServer().getPluginManager().registerEvents(new CeremonyInteractListener(this), this);
         getServer().getPluginManager().registerEvents(ceremonyChatListener, this);
+        if (oathboundConfig.pvpRestrictToDeclaredWars()) {
+            getServer().getPluginManager().registerEvents(new DiplomaticPvpGuardListener(this), this);
+        }
 
         getServer().getScheduler().runTaskTimer(this, this::runConditionEngineTick, 100L, 100L);
 
@@ -315,6 +324,7 @@ public final class OathboundPlugin extends JavaPlugin {
                 escrowClaimCache.put(claim.id(), claim);
                 persistEscrowClaimAsync(claim);
             }
+            result.changedRelations().forEach(this::persistDiplomaticRelationAsync);
         } catch (RuntimeException e) {
             getLogger().log(Level.SEVERE, "Condition engine tick failed", e);
         }
@@ -490,6 +500,11 @@ public final class OathboundPlugin extends JavaPlugin {
                 mobKillTracker.loadExisting(record);
                 mobKillRecordCount++;
             }
+            int diplomaticRelationCount = 0;
+            for (DiplomaticRelation relation : dataStore.loadAllDiplomaticRelations()) {
+                diplomacyService.loadExisting(relation);
+                diplomaticRelationCount++;
+            }
             for (EscrowClaim claim : dataStore.loadAllEscrowClaims()) {
                 escrowClaimCache.put(claim.id(), claim);
             }
@@ -526,7 +541,8 @@ public final class OathboundPlugin extends JavaPlugin {
                     + protectionCache.size() + " protection(s), " + honorCount + " honor record(s), "
                     + notaryCache.size() + " notary/notaries, " + oathBoardCache.size() + " oath board(s), "
                     + villagerNpcCache.size() + " villager shop NPC(s), " + bountyCache.size() + " bounty/bounties, "
-                    + banishmentCache.size() + " banishment(s), " + mobKillRecordCount + " mob kill record(s) from storage.");
+                    + banishmentCache.size() + " banishment(s), " + mobKillRecordCount + " mob kill record(s), "
+                    + diplomaticRelationCount + " diplomatic relation(s) from storage.");
         } catch (DataStoreException e) {
             getLogger().log(Level.SEVERE, "Failed to load persisted state", e);
         }
@@ -732,6 +748,16 @@ public final class OathboundPlugin extends JavaPlugin {
         });
     }
 
+    public void persistDiplomaticRelationAsync(DiplomaticRelation relation) {
+        persistenceExecutor.submit(() -> {
+            try {
+                dataStore.saveDiplomaticRelation(relation);
+            } catch (DataStoreException e) {
+                getLogger().log(Level.SEVERE, "Failed to persist diplomatic relation " + relation.groupA() + "/" + relation.groupB(), e);
+            }
+        });
+    }
+
     public void setBountyNotificationOptOutAsync(UUID playerId, boolean optedOut) {
         persistenceExecutor.submit(() -> {
             try {
@@ -864,5 +890,9 @@ public final class OathboundPlugin extends JavaPlugin {
 
     public CeremonyChatListener ceremonyChatListener() {
         return ceremonyChatListener;
+    }
+
+    public DiplomacyService diplomacyService() {
+        return diplomacyService;
     }
 }

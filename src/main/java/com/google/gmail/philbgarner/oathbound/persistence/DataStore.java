@@ -6,6 +6,7 @@ import com.google.gmail.philbgarner.oathbound.bounty.Banishment;
 import com.google.gmail.philbgarner.oathbound.bounty.Bounty;
 import com.google.gmail.philbgarner.oathbound.bounty.PveContractProgress;
 import com.google.gmail.philbgarner.oathbound.contract.TradeOffer;
+import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticRelation;
 import com.google.gmail.philbgarner.oathbound.economy.PlayerBalance;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
 import com.google.gmail.philbgarner.oathbound.honor.PlayerHonor;
@@ -61,6 +62,10 @@ public interface DataStore {
     void saveHonor(PlayerHonor honor) throws DataStoreException;
 
     List<PlayerHonor> loadAllHonor() throws DataStoreException;
+
+    void saveDiplomaticRelation(DiplomaticRelation relation) throws DataStoreException;
+
+    List<DiplomaticRelation> loadAllDiplomaticRelations() throws DataStoreException;
 
     void saveAltar(Altar altar) throws DataStoreException;
 

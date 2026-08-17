@@ -119,4 +119,54 @@ final class OwnershipResolverTest {
 
         assertEquals(new ProtectionGroupRef(b.id()), a.owner());
     }
+
+    @Test
+    void resolveRootGroupWalksToTheTopmostGroupInAChain() {
+        PlayerRef king = new PlayerRef(UUID.randomUUID());
+        ProtectionGroup kingdom = newGroup(king);
+        ProtectionGroup duchy = newGroup(new ProtectionGroupRef(kingdom.id()));
+        ProtectionGroup town = newGroup(new ProtectionGroupRef(duchy.id()));
+
+        ProtectionGroupRef root = resolver.resolveRootGroup(new ProtectionGroupRef(town.id()));
+
+        assertEquals(kingdom.id(), root.groupId());
+    }
+
+    @Test
+    void resolveRootGroupOfAGroupWithNoGroupOwnerIsItself() {
+        ProtectionGroup group = newGroup(new PlayerRef(UUID.randomUUID()));
+
+        ProtectionGroupRef root = resolver.resolveRootGroup(new ProtectionGroupRef(group.id()));
+
+        assertEquals(group.id(), root.groupId());
+    }
+
+    @Test
+    void resolveRootGroupFailsSafeWhenChainExceedsDepthCutoff() {
+        OwnershipResolver shallowResolver = new OwnershipResolver(this::find, 3);
+        PlayerRef player = new PlayerRef(UUID.randomUUID());
+        ProtectionGroup previous = newGroup(player);
+        for (int i = 0; i < 5; i++) {
+            previous = newGroup(new ProtectionGroupRef(previous.id()));
+        }
+
+        // Doesn't throw, and doesn't escalate all the way to the true root - stops wherever the cutoff hit.
+        ProtectionGroupRef root = shallowResolver.resolveRootGroup(new ProtectionGroupRef(previous.id()));
+
+        assertTrue(groups.containsKey(root.groupId()));
+    }
+
+    @Test
+    void resolveRootGroupFailsSafeWhenAGroupInTheChainIsMissing() {
+        // group declares danglingRef as its owner, but danglingRef doesn't resolve to a real group -
+        // resolution stops at the point of failure (the dangling ref itself), the same way
+        // resolveTerminalOwner gives up rather than backing up to the last known-good group and
+        // pretending the broken chain doesn't extend any further.
+        ProtectionGroupRef danglingRef = new ProtectionGroupRef(UUID.randomUUID());
+        ProtectionGroup group = newGroup(danglingRef);
+
+        ProtectionGroupRef root = resolver.resolveRootGroup(new ProtectionGroupRef(group.id()));
+
+        assertEquals(danglingRef.groupId(), root.groupId());
+    }
 }

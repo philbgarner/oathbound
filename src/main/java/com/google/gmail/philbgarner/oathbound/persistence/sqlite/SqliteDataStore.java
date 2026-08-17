@@ -6,6 +6,8 @@ import com.google.gmail.philbgarner.oathbound.bounty.Banishment;
 import com.google.gmail.philbgarner.oathbound.bounty.Bounty;
 import com.google.gmail.philbgarner.oathbound.bounty.PveContractProgress;
 import com.google.gmail.philbgarner.oathbound.contract.TradeOffer;
+import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticRelation;
+import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticState;
 import com.google.gmail.philbgarner.oathbound.economy.Currency;
 import com.google.gmail.philbgarner.oathbound.economy.PlayerBalance;
 import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
@@ -39,6 +41,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -62,7 +65,8 @@ public final class SqliteDataStore implements DataStore {
             "db/migrations/0009_oath_boards.sql",
             "db/migrations/0010_villager_npcs.sql",
             "db/migrations/0011_bounty.sql",
-            "db/migrations/0012_mob_kill_records.sql"
+            "db/migrations/0012_mob_kill_records.sql",
+            "db/migrations/0013_diplomacy.sql"
     );
 
     private final Path databaseFile;
@@ -358,6 +362,36 @@ public final class SqliteDataStore implements DataStore {
             }
         } catch (SQLException e) {
             throw new DataStoreException("Failed to load all honor", e);
+        }
+        return result;
+    }
+
+    @Override
+    public synchronized void saveDiplomaticRelation(DiplomaticRelation relation) throws DataStoreException {
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "INSERT INTO diplomatic_relations(group_a_id, group_b_id, state, since) VALUES (?, ?, ?, ?) "
+                        + "ON CONFLICT(group_a_id, group_b_id) DO UPDATE SET state = excluded.state, since = excluded.since")) {
+            stmt.setString(1, relation.groupA().toString());
+            stmt.setString(2, relation.groupB().toString());
+            stmt.setString(3, relation.state().name());
+            stmt.setString(4, relation.since().toString());
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to save diplomatic relation " + relation.groupA() + "/" + relation.groupB(), e);
+        }
+    }
+
+    @Override
+    public synchronized List<DiplomaticRelation> loadAllDiplomaticRelations() throws DataStoreException {
+        List<DiplomaticRelation> result = new ArrayList<>();
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT group_a_id, group_b_id, state, since FROM diplomatic_relations")) {
+            while (rs.next()) {
+                result.add(new DiplomaticRelation(UUID.fromString(rs.getString(1)), UUID.fromString(rs.getString(2)),
+                        DiplomaticState.valueOf(rs.getString(3)), Instant.parse(rs.getString(4))));
+            }
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to load all diplomatic relations", e);
         }
         return result;
     }

@@ -13,6 +13,7 @@ import com.google.gmail.philbgarner.oathbound.bounty.BountyTargeting;
 import com.google.gmail.philbgarner.oathbound.bounty.HeatCalculator;
 import com.google.gmail.philbgarner.oathbound.bukkit.CeremonyItems;
 import com.google.gmail.philbgarner.oathbound.ceremony.CeremonyTemplateDefinition;
+import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticState;
 import com.google.gmail.philbgarner.oathbound.economy.EconomyService;
 import com.google.gmail.philbgarner.oathbound.group.EntityRef;
 import com.google.gmail.philbgarner.oathbound.group.GroupPermission;
@@ -26,6 +27,7 @@ import com.google.gmail.philbgarner.oathbound.group.Role;
 import com.google.gmail.philbgarner.oathbound.honor.PlayerHonor;
 import com.google.gmail.philbgarner.oathbound.notary.Notary;
 import com.google.gmail.philbgarner.oathbound.oath.Clause;
+import com.google.gmail.philbgarner.oathbound.oath.Condition;
 import com.google.gmail.philbgarner.oathbound.oath.LedgerEntry;
 import com.google.gmail.philbgarner.oathbound.oath.Oath;
 import com.google.gmail.philbgarner.oathbound.oath.OathService;
@@ -54,10 +56,10 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
 
     private static final List<String> TOP_LEVEL =
             List.of("group", "oath", "ledger", "altar", "honor", "notary", "board", "villager", "bounty",
-                    "banishment", "ceremony");
+                    "banishment", "ceremony", "diplomacy");
     private static final List<String> GROUP_SUB = List.of("create", "transfer", "info", "list");
-    private static final List<String> OATH_SUB = List.of("create", "addflag", "confirm", "propose", "seal",
-            "activate", "fulfill", "breach", "void", "info", "list");
+    private static final List<String> OATH_SUB = List.of("create", "addflag", "adddiplomacy", "confirm", "propose",
+            "seal", "activate", "fulfill", "breach", "void", "info", "list");
     private static final List<String> ALTAR_SUB = List.of("list", "info");
     private static final List<String> HONOR_SUB = List.of("info", "adjust");
     private static final List<String> NOTARY_SUB = List.of("list", "info", "remove");
@@ -66,6 +68,7 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
     private static final List<String> BOUNTY_SUB = List.of("list", "info", "cancel", "heat");
     private static final List<String> BANISHMENT_SUB = List.of("list", "info", "release", "set-pen");
     private static final List<String> CEREMONY_SUB = List.of("give", "list");
+    private static final List<String> DIPLOMACY_SUB = List.of("declare-war", "info", "list");
 
     private final OathboundPlugin plugin;
 
@@ -96,6 +99,7 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
                 case "bounty" -> handleBounty(player, args);
                 case "banishment" -> handleBanishment(player, args);
                 case "ceremony" -> handleCeremony(player, args);
+                case "diplomacy" -> handleDiplomacy(player, args);
                 default -> sender.sendMessage("Unknown top-level command: " + args[0]);
             }
         } catch (OathTransitionException e) {
@@ -216,6 +220,7 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
         switch (args[1].toLowerCase()) {
             case "create" -> oathCreate(sender, args);
             case "addflag" -> oathAddFlag(sender, args);
+            case "adddiplomacy" -> oathAddDiplomacy(sender, args);
             case "confirm" -> oathConfirm(sender, args);
             case "propose" -> oathTransition(sender, args, OathService::propose);
             case "seal" -> oathTransition(sender, args, OathService::seal);
@@ -258,6 +263,81 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
         plugin.oathService().addClause(oath.get(), new Clause.CustomFlagClause(text));
         plugin.persistOathAsync(oath.get());
         sender.sendMessage("Added CustomFlagClause to " + oath.get().id());
+    }
+
+    private void oathAddDiplomacy(Player sender, String[] args) {
+        if (args.length < 6) {
+            sender.sendMessage("Usage: /oathbound-debug oath adddiplomacy <oathId> <groupA> <groupB> <war|peace|alliance>");
+            return;
+        }
+        Optional<Oath> oath = findOath(args[2]);
+        if (oath.isEmpty()) {
+            sender.sendMessage("No such oath: " + args[2]);
+            return;
+        }
+        Optional<ProtectionGroup> groupA = findGroup(args[3]);
+        Optional<ProtectionGroup> groupB = findGroup(args[4]);
+        if (groupA.isEmpty() || groupB.isEmpty()) {
+            sender.sendMessage("No such group: " + (groupA.isEmpty() ? args[3] : args[4]));
+            return;
+        }
+        DiplomaticState newState;
+        try {
+            newState = DiplomaticState.valueOf(args[5].toUpperCase());
+        } catch (IllegalArgumentException e) {
+            sender.sendMessage("State must be one of: war, peace, alliance");
+            return;
+        }
+        if (newState == DiplomaticState.NEUTRAL) {
+            sender.sendMessage("A treaty can't declare neutrality - that's only the default for a pair with no relation.");
+            return;
+        }
+
+        Optional<ProtectionGroup> rootA = resolveDiplomaticRoot(groupA.get());
+        Optional<ProtectionGroup> rootB = resolveDiplomaticRoot(groupB.get());
+        if (rootA.isEmpty() || rootB.isEmpty()) {
+            sender.sendMessage("Could not resolve a root group for diplomacy.");
+            return;
+        }
+        Optional<String> tierError = diplomaticTierError(rootA.get(), rootB.get());
+        if (tierError.isPresent()) {
+            sender.sendMessage(tierError.get());
+            return;
+        }
+        PlayerRef actorRef = new PlayerRef(sender.getUniqueId());
+        boolean authorized = rootA.get().hasPermission(actorRef, GroupPermission.ACCEPT_ON_BEHALF)
+                || rootB.get().hasPermission(actorRef, GroupPermission.ACCEPT_ON_BEHALF);
+        if (!authorized) {
+            sender.sendMessage("You don't hold ACCEPT_ON_BEHALF on " + rootA.get().name() + " or " + rootB.get().name()
+                    + " - diplomatic relations belong to the most senior group in your chain, not any vassal.");
+            return;
+        }
+
+        Clause.DiplomacyClause clause = new Clause.DiplomacyClause(new ProtectionGroupRef(groupA.get().id()),
+                new ProtectionGroupRef(groupB.get().id()), newState, new Condition.Immediate());
+        plugin.oathService().addClause(oath.get(), clause);
+        plugin.persistOathAsync(oath.get());
+        sender.sendMessage("Added a treaty clause to " + oath.get().id() + ": " + groupA.get().name() + " <-> "
+                + groupB.get().name() + " becomes " + newState + " once sealed.");
+    }
+
+    /** Diplomatic authority belongs to the most senior group in an ownership chain, not any vassal under
+     * it - every diplomacy command resolves through this before checking tier or permissions. */
+    private Optional<ProtectionGroup> resolveDiplomaticRoot(ProtectionGroup group) {
+        UUID rootId = plugin.diplomacyService().rootOf(group.id());
+        return Optional.ofNullable(plugin.groupCache().get(rootId));
+    }
+
+    private Optional<String> diplomaticTierError(ProtectionGroup rootA, ProtectionGroup rootB) {
+        if (rootA.tier() != GroupTier.REGION && rootA.tier() != GroupTier.KINGDOM) {
+            return Optional.of(rootA.name() + " (the senior-most group in that chain) is only " + rootA.tier()
+                    + " tier - only REGION/KINGDOM-tier groups can participate in diplomacy.");
+        }
+        if (rootB.tier() != GroupTier.REGION && rootB.tier() != GroupTier.KINGDOM) {
+            return Optional.of(rootB.name() + " (the senior-most group in that chain) is only " + rootB.tier()
+                    + " tier - only REGION/KINGDOM-tier groups can participate in diplomacy.");
+        }
+        return Optional.empty();
     }
 
     private void oathConfirm(Player sender, String[] args) {
@@ -824,6 +904,99 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
         }
     }
 
+    // ---- diplomacy ----
+
+    private void handleDiplomacy(Player sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage("Usage: /oathbound-debug diplomacy <declare-war|info|list> ...");
+            return;
+        }
+        switch (args[1].toLowerCase()) {
+            case "declare-war" -> diplomacyDeclareWar(sender, args);
+            case "info" -> diplomacyInfo(sender, args);
+            case "list" -> diplomacyList(sender);
+            default -> sender.sendMessage("Unknown diplomacy subcommand: " + args[1]);
+        }
+    }
+
+    private void diplomacyDeclareWar(Player sender, String[] args) {
+        if (args.length < 4) {
+            sender.sendMessage("Usage: /oathbound-debug diplomacy declare-war <groupA> <groupB>");
+            return;
+        }
+        Optional<ProtectionGroup> groupA = findGroup(args[2]);
+        Optional<ProtectionGroup> groupB = findGroup(args[3]);
+        if (groupA.isEmpty() || groupB.isEmpty()) {
+            sender.sendMessage("No such group: " + (groupA.isEmpty() ? args[2] : args[3]));
+            return;
+        }
+        Optional<ProtectionGroup> rootA = resolveDiplomaticRoot(groupA.get());
+        Optional<ProtectionGroup> rootB = resolveDiplomaticRoot(groupB.get());
+        if (rootA.isEmpty() || rootB.isEmpty()) {
+            sender.sendMessage("Could not resolve a root group for diplomacy.");
+            return;
+        }
+        Optional<String> tierError = diplomaticTierError(rootA.get(), rootB.get());
+        if (tierError.isPresent()) {
+            sender.sendMessage(tierError.get());
+            return;
+        }
+        PlayerRef actorRef = new PlayerRef(sender.getUniqueId());
+        if (!rootA.get().hasPermission(actorRef, GroupPermission.ACCEPT_ON_BEHALF)) {
+            sender.sendMessage("You don't hold ACCEPT_ON_BEHALF on " + rootA.get().name()
+                    + " - relations are inherited from your liege, not declared by a vassal.");
+            return;
+        }
+
+        DiplomaticState previous = plugin.diplomacyService().currentState(rootA.get().id(), rootB.get().id());
+        var relation = plugin.diplomacyService().setState(rootA.get().id(), rootB.get().id(), DiplomaticState.WAR, Instant.now());
+        plugin.persistDiplomaticRelationAsync(relation);
+
+        sender.sendMessage(rootA.get().name() + " has declared war on " + rootB.get().name() + ".");
+        if (previous == DiplomaticState.PEACE || previous == DiplomaticState.ALLIANCE) {
+            long newHonor = plugin.honorService().adjust(actorRef, -plugin.oathboundConfig().diplomacyBetrayalHonorPenalty());
+            plugin.persistHonorAsync(new PlayerHonor(actorRef, newHonor));
+            sender.sendMessage("Breaking a standing " + previous + " cost you "
+                    + plugin.oathboundConfig().diplomacyBetrayalHonorPenalty() + " honor (now " + newHonor + ").");
+        }
+    }
+
+    private void diplomacyInfo(Player sender, String[] args) {
+        if (args.length < 4) {
+            sender.sendMessage("Usage: /oathbound-debug diplomacy info <groupA> <groupB>");
+            return;
+        }
+        Optional<ProtectionGroup> groupA = findGroup(args[2]);
+        Optional<ProtectionGroup> groupB = findGroup(args[3]);
+        if (groupA.isEmpty() || groupB.isEmpty()) {
+            sender.sendMessage("No such group: " + (groupA.isEmpty() ? args[2] : args[3]));
+            return;
+        }
+        Optional<ProtectionGroup> rootA = resolveDiplomaticRoot(groupA.get());
+        Optional<ProtectionGroup> rootB = resolveDiplomaticRoot(groupB.get());
+        if (rootA.isEmpty() || rootB.isEmpty()) {
+            sender.sendMessage("Could not resolve a root group for diplomacy.");
+            return;
+        }
+        DiplomaticState state = plugin.diplomacyService().currentState(rootA.get().id(), rootB.get().id());
+        sender.sendMessage(groupA.get().name() + " (-> " + rootA.get().name() + ") and " + groupB.get().name()
+                + " (-> " + rootB.get().name() + ") are: " + state);
+    }
+
+    private void diplomacyList(Player sender) {
+        if (plugin.diplomacyService().allRelations().isEmpty()) {
+            sender.sendMessage("No recorded diplomatic relations.");
+            return;
+        }
+        for (var relation : plugin.diplomacyService().allRelations()) {
+            ProtectionGroup groupA = plugin.groupCache().get(relation.groupA());
+            ProtectionGroup groupB = plugin.groupCache().get(relation.groupB());
+            sender.sendMessage((groupA != null ? groupA.name() : relation.groupA()) + " <-> "
+                    + (groupB != null ? groupB.name() : relation.groupB()) + ": " + relation.state()
+                    + " (since " + relation.since() + ")");
+        }
+    }
+
     // ---- lookups ----
 
     private Optional<Altar> findAltar(String idString) {
@@ -906,6 +1079,7 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
                 case "bounty" -> filter(BOUNTY_SUB, args[1]);
                 case "banishment" -> filter(BANISHMENT_SUB, args[1]);
                 case "ceremony" -> filter(CEREMONY_SUB, args[1]);
+                case "diplomacy" -> filter(DIPLOMACY_SUB, args[1]);
                 default -> new ArrayList<>();
             };
         }

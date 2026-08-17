@@ -45,7 +45,8 @@ public final class GsonFactory {
                         "escrow", Clause.EscrowClause.class,
                         "custom_flag", Clause.CustomFlagClause.class,
                         "kill_count", Clause.KillCountClause.class,
-                        "mob_kill", Clause.MobKillClause.class
+                        "mob_kill", Clause.MobKillClause.class,
+                        "diplomacy", Clause.DiplomacyClause.class
                 )))
                 .registerTypeAdapterFactory(new PolymorphicTypeAdapterFactory<>(BountyTarget.class, Map.of(
                         "solo", BountyTarget.Solo.class,

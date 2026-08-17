@@ -1,5 +1,7 @@
 package com.google.gmail.philbgarner.oathbound.oath;
 
+import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomacyService;
+import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticRelation;
 import com.google.gmail.philbgarner.oathbound.economy.Currency;
 import com.google.gmail.philbgarner.oathbound.economy.EconomyService;
 import com.google.gmail.philbgarner.oathbound.group.OwnershipResolver;
@@ -37,7 +39,8 @@ import java.util.function.Function;
  */
 public final class ConditionEngine {
 
-    public record TickResult(List<Oath> changedOaths, List<EscrowClaim> newClaims) {
+    public record TickResult(List<Oath> changedOaths, List<EscrowClaim> newClaims,
+                              List<DiplomaticRelation> changedRelations) {
     }
 
     private final OathService oathService;
@@ -47,11 +50,13 @@ public final class ConditionEngine {
     private final DeathTracker deathTracker;
     private final MobKillTracker mobKillTracker;
     private final ManualConfirmStore manualConfirms;
+    private final DiplomacyService diplomacyService;
     private final ConditionEvaluator evaluator = new ConditionEvaluator();
 
     public ConditionEngine(OathService oathService, OwnershipResolver ownershipResolver,
                             EconomyService economyService, Function<UUID, Optional<ProtectionGroup>> groupLookup,
-                            DeathTracker deathTracker, MobKillTracker mobKillTracker, ManualConfirmStore manualConfirms) {
+                            DeathTracker deathTracker, MobKillTracker mobKillTracker, ManualConfirmStore manualConfirms,
+                            DiplomacyService diplomacyService) {
         this.oathService = Objects.requireNonNull(oathService, "oathService");
         this.ownershipResolver = Objects.requireNonNull(ownershipResolver, "ownershipResolver");
         this.economyService = Objects.requireNonNull(economyService, "economyService");
@@ -59,22 +64,25 @@ public final class ConditionEngine {
         this.deathTracker = Objects.requireNonNull(deathTracker, "deathTracker");
         this.mobKillTracker = Objects.requireNonNull(mobKillTracker, "mobKillTracker");
         this.manualConfirms = Objects.requireNonNull(manualConfirms, "manualConfirms");
+        this.diplomacyService = Objects.requireNonNull(diplomacyService, "diplomacyService");
     }
 
     /** Evaluates every ACTIVE oath in {@code oaths}, returning the oaths that changed (for the caller to
-     * persist) and any newly released escrow item batches. Oaths in any other state are ignored. */
+     * persist), any newly released escrow item batches, and any diplomatic relations a sealed treaty
+     * clause changed this tick. Oaths in any other state are ignored. */
     public TickResult tick(Collection<Oath> oaths, Instant now) {
         List<Oath> changedOaths = new ArrayList<>();
         List<EscrowClaim> newClaims = new ArrayList<>();
+        List<DiplomaticRelation> changedRelations = new ArrayList<>();
         for (Oath oath : oaths) {
-            if (oath.state() == OathState.ACTIVE && tickOne(oath, now, newClaims)) {
+            if (oath.state() == OathState.ACTIVE && tickOne(oath, now, newClaims, changedRelations)) {
                 changedOaths.add(oath);
             }
         }
-        return new TickResult(changedOaths, newClaims);
+        return new TickResult(changedOaths, newClaims, changedRelations);
     }
 
-    private boolean tickOne(Oath oath, Instant now, List<EscrowClaim> newClaims) {
+    private boolean tickOne(Oath oath, Instant now, List<EscrowClaim> newClaims, List<DiplomaticRelation> changedRelations) {
         if (oath.activatedAt() == null) {
             // Legacy/rehydrated data from before activatedAt existed - nothing safe to evaluate against.
             return false;
@@ -94,7 +102,8 @@ public final class ConditionEngine {
                 continue;
             }
             if (!(clause instanceof Clause.TransferClause) && !(clause instanceof Clause.EscrowClause)
-                    && !(clause instanceof Clause.KillCountClause) && !(clause instanceof Clause.MobKillClause)) {
+                    && !(clause instanceof Clause.KillCountClause) && !(clause instanceof Clause.MobKillClause)
+                    && !(clause instanceof Clause.DiplomacyClause)) {
                 allAutoResolvableAndDone = false;
                 continue;
             }
@@ -116,6 +125,9 @@ public final class ConditionEngine {
                 case Clause.MobKillClause mobKill ->
                         evaluator.evaluate(new Condition.MobKillCount(mobKill.obligor(), mobKill.mobTypeName(), mobKill.quantity()),
                                 oath.activatedAt(), now, context);
+                case Clause.DiplomacyClause diplomacy ->
+                        evaluator.evaluate(diplomacy.condition(), oath.activatedAt(), now, context)
+                                && executeDiplomacy(diplomacy, now, changedRelations);
                 default -> false;
             };
 
@@ -157,6 +169,13 @@ public final class ConditionEngine {
         } catch (RuntimeException e) {
             return false;
         }
+    }
+
+    private boolean executeDiplomacy(Clause.DiplomacyClause diplomacy, Instant now, List<DiplomaticRelation> changedRelations) {
+        DiplomaticRelation relation = diplomacyService.setState(diplomacy.groupA().groupId(),
+                diplomacy.groupB().groupId(), diplomacy.newState(), now);
+        changedRelations.add(relation);
+        return true;
     }
 
     private boolean executeEscrowRelease(Oath oath, int clauseIndex, Clause.EscrowClause escrow, Instant now,

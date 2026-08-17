@@ -200,6 +200,19 @@ ceremony-templates: []
 #         mob: RAVAGER
 #         quantity: 1
 
+diplomacy:
+  # Honor penalty applied to whoever declares war while the relation was PEACE or ALLIANCE (a backstab).
+  # Declaring war from NEUTRAL (no prior relation) or from an existing WAR costs nothing. Diplomatic
+  # authority always belongs to the most senior group in an ownership chain - a vassal's relations are
+  # its liege's relations, all the way up.
+  betrayal-honor-penalty: 20
+
+pvp:
+  # If true, two players can only deal PvP damage to each other when their groups' resolved root
+  # relation is WAR. Players not in any group are always protected when this is on. Off by default so
+  # existing/testing servers aren't surprised by PvP locking up before any kingdoms or wars exist.
+  restrict-to-declared-wars: false
+
 villagers:
   # Each role's shop NPCs all share one fixed buy/sell list, edited here - not a per-instance builder.
   # 'sells' = the NPC sells to the player (player pays, receives the item).
