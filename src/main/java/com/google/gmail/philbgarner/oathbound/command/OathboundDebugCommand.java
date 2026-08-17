@@ -13,6 +13,7 @@ import com.google.gmail.philbgarner.oathbound.bounty.BountyTargeting;
 import com.google.gmail.philbgarner.oathbound.bounty.HeatCalculator;
 import com.google.gmail.philbgarner.oathbound.bukkit.CeremonyItems;
 import com.google.gmail.philbgarner.oathbound.ceremony.CeremonyTemplateDefinition;
+import com.google.gmail.philbgarner.oathbound.ceremony.CeremonyTrigger;
 import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticState;
 import com.google.gmail.philbgarner.oathbound.economy.EconomyService;
 import com.google.gmail.philbgarner.oathbound.group.EntityRef;
@@ -67,7 +68,7 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
     private static final List<String> VILLAGER_SUB = List.of("list", "info", "remove");
     private static final List<String> BOUNTY_SUB = List.of("list", "info", "cancel", "heat");
     private static final List<String> BANISHMENT_SUB = List.of("list", "info", "release", "set-pen");
-    private static final List<String> CEREMONY_SUB = List.of("give", "list");
+    private static final List<String> CEREMONY_SUB = List.of("give", "list", "triggers");
     private static final List<String> DIPLOMACY_SUB = List.of("declare-war", "info", "list");
 
     private final OathboundPlugin plugin;
@@ -856,12 +857,13 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
 
     private void handleCeremony(Player sender, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage("Usage: /oathbound-debug ceremony <give|list> ...");
+            sender.sendMessage("Usage: /oathbound-debug ceremony <give|list|triggers> ...");
             return;
         }
         switch (args[1].toLowerCase()) {
             case "give" -> ceremonyGive(sender, args);
             case "list" -> ceremonyList(sender);
+            case "triggers" -> ceremonyTriggers(sender);
             default -> sender.sendMessage("Unknown ceremony subcommand: " + args[1]);
         }
     }
@@ -901,6 +903,19 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
         }
         for (CeremonyTemplateDefinition template : plugin.oathboundConfig().ceremonyTemplates()) {
             sender.sendMessage(template.id() + " '" + template.displayName() + "' clauses=" + template.clauses().size());
+        }
+    }
+
+    private void ceremonyTriggers(Player sender) {
+        if (plugin.ceremonyTriggerCache().isEmpty()) {
+            sender.sendMessage("No ceremony triggers bound.");
+            return;
+        }
+        for (CeremonyTrigger trigger : plugin.ceremonyTriggerCache().values()) {
+            OfflinePlayer installer = Bukkit.getOfflinePlayer(trigger.installer().playerId());
+            String installerName = installer.getName() != null ? installer.getName() : trigger.installer().playerId().toString();
+            sender.sendMessage(trigger.id() + " template=" + trigger.templateId() + " installer=" + installerName
+                    + " loc=" + trigger.location());
         }
     }
 

@@ -5,6 +5,7 @@ import com.google.gmail.philbgarner.oathbound.board.OathBoard;
 import com.google.gmail.philbgarner.oathbound.bounty.Banishment;
 import com.google.gmail.philbgarner.oathbound.bounty.Bounty;
 import com.google.gmail.philbgarner.oathbound.bounty.PveContractProgress;
+import com.google.gmail.philbgarner.oathbound.ceremony.CeremonyTrigger;
 import com.google.gmail.philbgarner.oathbound.contract.TradeOffer;
 import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticRelation;
 import com.google.gmail.philbgarner.oathbound.economy.PlayerBalance;
@@ -112,6 +113,12 @@ public interface DataStore {
     List<OathBoard> loadAllOathBoards() throws DataStoreException;
 
     void deleteOathBoard(UUID id) throws DataStoreException;
+
+    void saveCeremonyTrigger(CeremonyTrigger trigger) throws DataStoreException;
+
+    List<CeremonyTrigger> loadAllCeremonyTriggers() throws DataStoreException;
+
+    void deleteCeremonyTrigger(UUID id) throws DataStoreException;
 
     void saveVillagerNpc(VillagerNpc npc) throws DataStoreException;
 

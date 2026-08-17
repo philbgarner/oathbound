@@ -167,8 +167,15 @@ pve-contracts: []
 # /oathbound-debug ceremony give <templateId> <groupId> [player] - the group id is the liege
 # ProtectionGroup territory reverts to, so the same template can be reused by any liege for any of
 # their own groups. Right-clicking another player with the item speaks 'dialogue' to them; replying
-# with one of 'confirm-phrases' seals and activates the oath immediately.
+# with one of 'confirm-phrases' seals and activates the oath immediately. The same item can instead be
+# right-clicked onto an already-placed pressure plate or push/lever button to bind the ceremony there -
+# any player who steps on/presses it afterwards is prompted as if the binder had right-clicked them, and
+# the binder doesn't need to be online for the trigger to fire (only to seal it via chat afterwards).
 ceremony-templates: []
+
+# Whether ceremony items can be bound to pressure plates/buttons at all (see above). Doesn't affect the
+# existing right-click-a-player flow.
+ceremony-block-triggers-enabled: true
 # Example:
 # ceremony-templates:
 #   - id: fealty

@@ -51,16 +51,38 @@ public final class CeremonyChatListener implements Listener {
     }
 
     public void beginPrompt(Player initiator, Player target, CeremonyTemplateDefinition template, UUID liegeGroupId) {
+        beginPrompt(initiator.getUniqueId(), initiator.getName(), target, template, liegeGroupId);
+    }
+
+    /** Same as {@link #beginPrompt(Player, Player, CeremonyTemplateDefinition, UUID)} but the initiator
+     * need not currently be online - used by a bound pressure-plate/button trigger, where the liege who
+     * installed it may be offline when someone else steps on it. Confirmation still requires the
+     * initiator to be online by the time {@code target} replies (see {@link #handleConfirm}). */
+    public void beginPrompt(UUID initiatorId, String initiatorName, Player target, CeremonyTemplateDefinition template,
+                             UUID liegeGroupId) {
         if (pending.containsKey(target.getUniqueId())) {
-            initiator.sendMessage("They're already considering another ceremony.");
+            Player initiator = Bukkit.getPlayer(initiatorId);
+            if (initiator != null) {
+                initiator.sendMessage("They're already considering another ceremony.");
+            }
             return;
         }
         Instant expiresAt = Instant.now().plusSeconds(template.promptTimeoutSeconds());
-        pending.put(target.getUniqueId(), new PendingCeremony(template, initiator.getUniqueId(), liegeGroupId, expiresAt));
+        pending.put(target.getUniqueId(), new PendingCeremony(template, initiatorId, liegeGroupId, expiresAt));
         for (String line : template.dialogueLines()) {
-            target.sendMessage(line.replace("{initiator}", initiator.getName()).replace("{target}", target.getName()));
+            target.sendMessage(line.replace("{initiator}", initiatorName).replace("{target}", target.getName()));
         }
-        initiator.sendMessage("You have begun the '" + template.displayName() + "' ceremony with " + target.getName() + ".");
+        Player initiator = Bukkit.getPlayer(initiatorId);
+        if (initiator != null) {
+            initiator.sendMessage("You have begun the '" + template.displayName() + "' ceremony with " + target.getName() + ".");
+        }
+    }
+
+    /** Whether {@code playerId} currently has an unanswered ceremony prompt - used by a bound
+     * pressure-plate/button trigger to avoid re-prompting on every repeated activation while one is
+     * already pending. */
+    public boolean hasPending(UUID playerId) {
+        return pending.containsKey(playerId);
     }
 
     @EventHandler

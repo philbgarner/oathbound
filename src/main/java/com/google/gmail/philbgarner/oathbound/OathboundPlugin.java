@@ -14,6 +14,7 @@ import com.google.gmail.philbgarner.oathbound.bounty.BountyService;
 import com.google.gmail.philbgarner.oathbound.bounty.PveContractProgress;
 import com.google.gmail.philbgarner.oathbound.bounty.PveContractService;
 import com.google.gmail.philbgarner.oathbound.ceremony.CeremonyService;
+import com.google.gmail.philbgarner.oathbound.ceremony.CeremonyTrigger;
 import com.google.gmail.philbgarner.oathbound.command.OathboundBountyCommand;
 import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomacyService;
 import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticRelation;
@@ -55,6 +56,8 @@ import com.google.gmail.philbgarner.oathbound.listener.BountyKillListener;
 import com.google.gmail.philbgarner.oathbound.listener.BountyLoginNoticeListener;
 import com.google.gmail.philbgarner.oathbound.listener.CeremonyChatListener;
 import com.google.gmail.philbgarner.oathbound.listener.CeremonyInteractListener;
+import com.google.gmail.philbgarner.oathbound.listener.CeremonyTriggerBreakListener;
+import com.google.gmail.philbgarner.oathbound.listener.CeremonyTriggerListener;
 import com.google.gmail.philbgarner.oathbound.listener.DiplomaticPvpGuardListener;
 import com.google.gmail.philbgarner.oathbound.listener.MobKillTrackingListener;
 import com.google.gmail.philbgarner.oathbound.listener.PveKillListener;
@@ -145,6 +148,7 @@ public final class OathboundPlugin extends JavaPlugin {
     private final Map<UUID, Bounty> bountyCache = new ConcurrentHashMap<>();
     private final Map<UUID, Banishment> banishmentCache = new ConcurrentHashMap<>();
     private final Map<UUID, PveContractProgress> pveContractProgressCache = new ConcurrentHashMap<>();
+    private final Map<UUID, CeremonyTrigger> ceremonyTriggerCache = new ConcurrentHashMap<>();
     private final Set<UUID> bountyNotificationOptOuts = ConcurrentHashMap.newKeySet();
 
     @Override
@@ -306,6 +310,10 @@ public final class OathboundPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new MobKillTrackingListener(this), this);
         getServer().getPluginManager().registerEvents(new CeremonyInteractListener(this), this);
         getServer().getPluginManager().registerEvents(ceremonyChatListener, this);
+        if (oathboundConfig.ceremonyBlockTriggersEnabled()) {
+            getServer().getPluginManager().registerEvents(new CeremonyTriggerListener(this), this);
+            getServer().getPluginManager().registerEvents(new CeremonyTriggerBreakListener(this), this);
+        }
         if (oathboundConfig.pvpRestrictToDeclaredWars()) {
             getServer().getPluginManager().registerEvents(new DiplomaticPvpGuardListener(this), this);
         }
@@ -534,6 +542,9 @@ public final class OathboundPlugin extends JavaPlugin {
             for (PveContractProgress progress : dataStore.loadAllPveContractProgress()) {
                 pveContractProgressCache.put(progress.id(), progress);
             }
+            for (CeremonyTrigger trigger : dataStore.loadAllCeremonyTriggers()) {
+                ceremonyTriggerCache.put(trigger.id(), trigger);
+            }
             bountyNotificationOptOuts.addAll(dataStore.loadBountyNotificationOptOuts());
             getLogger().info("Loaded " + groupCache.size() + " group(s), " + oathCache.size() + " oath(s), "
                     + altarCache.size() + " altar(s), " + tradeOfferCache.size() + " trade offer(s), "
@@ -542,6 +553,7 @@ public final class OathboundPlugin extends JavaPlugin {
                     + notaryCache.size() + " notary/notaries, " + oathBoardCache.size() + " oath board(s), "
                     + villagerNpcCache.size() + " villager shop NPC(s), " + bountyCache.size() + " bounty/bounties, "
                     + banishmentCache.size() + " banishment(s), " + mobKillRecordCount + " mob kill record(s), "
+                    + ceremonyTriggerCache.size() + " ceremony trigger(s), "
                     + diplomaticRelationCount + " diplomatic relation(s) from storage.");
         } catch (DataStoreException e) {
             getLogger().log(Level.SEVERE, "Failed to load persisted state", e);
@@ -684,6 +696,26 @@ public final class OathboundPlugin extends JavaPlugin {
                 dataStore.deleteOathBoard(id);
             } catch (DataStoreException e) {
                 getLogger().log(Level.SEVERE, "Failed to delete oath board " + id, e);
+            }
+        });
+    }
+
+    public void persistCeremonyTriggerAsync(CeremonyTrigger trigger) {
+        persistenceExecutor.submit(() -> {
+            try {
+                dataStore.saveCeremonyTrigger(trigger);
+            } catch (DataStoreException e) {
+                getLogger().log(Level.SEVERE, "Failed to persist ceremony trigger " + trigger.id(), e);
+            }
+        });
+    }
+
+    public void deleteCeremonyTriggerAsync(UUID id) {
+        persistenceExecutor.submit(() -> {
+            try {
+                dataStore.deleteCeremonyTrigger(id);
+            } catch (DataStoreException e) {
+                getLogger().log(Level.SEVERE, "Failed to delete ceremony trigger " + id, e);
             }
         });
     }
@@ -890,6 +922,10 @@ public final class OathboundPlugin extends JavaPlugin {
 
     public CeremonyChatListener ceremonyChatListener() {
         return ceremonyChatListener;
+    }
+
+    public Map<UUID, CeremonyTrigger> ceremonyTriggerCache() {
+        return ceremonyTriggerCache;
     }
 
     public DiplomacyService diplomacyService() {

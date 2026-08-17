@@ -5,6 +5,7 @@ import com.google.gmail.philbgarner.oathbound.board.OathBoard;
 import com.google.gmail.philbgarner.oathbound.bounty.Banishment;
 import com.google.gmail.philbgarner.oathbound.bounty.Bounty;
 import com.google.gmail.philbgarner.oathbound.bounty.PveContractProgress;
+import com.google.gmail.philbgarner.oathbound.ceremony.CeremonyTrigger;
 import com.google.gmail.philbgarner.oathbound.contract.TradeOffer;
 import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticRelation;
 import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticState;
@@ -66,7 +67,8 @@ public final class SqliteDataStore implements DataStore {
             "db/migrations/0010_villager_npcs.sql",
             "db/migrations/0011_bounty.sql",
             "db/migrations/0012_mob_kill_records.sql",
-            "db/migrations/0013_diplomacy.sql"
+            "db/migrations/0013_diplomacy.sql",
+            "db/migrations/0014_ceremony_triggers.sql"
     );
 
     private final Path databaseFile;
@@ -696,6 +698,43 @@ public final class SqliteDataStore implements DataStore {
             stmt.executeUpdate();
         } catch (SQLException e) {
             throw new DataStoreException("Failed to delete oath board " + id, e);
+        }
+    }
+
+    @Override
+    public synchronized void saveCeremonyTrigger(CeremonyTrigger trigger) throws DataStoreException {
+        String json = gson.toJson(trigger);
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "INSERT INTO ceremony_triggers(id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data")) {
+            stmt.setString(1, trigger.id().toString());
+            stmt.setString(2, json);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to save ceremony trigger " + trigger.id(), e);
+        }
+    }
+
+    @Override
+    public synchronized List<CeremonyTrigger> loadAllCeremonyTriggers() throws DataStoreException {
+        List<CeremonyTrigger> result = new ArrayList<>();
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT data FROM ceremony_triggers")) {
+            while (rs.next()) {
+                result.add(gson.fromJson(rs.getString(1), CeremonyTrigger.class));
+            }
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to load all ceremony triggers", e);
+        }
+        return result;
+    }
+
+    @Override
+    public synchronized void deleteCeremonyTrigger(UUID id) throws DataStoreException {
+        try (PreparedStatement stmt = connection.prepareStatement("DELETE FROM ceremony_triggers WHERE id = ?")) {
+            stmt.setString(1, id.toString());
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to delete ceremony trigger " + id, e);
         }
     }
 

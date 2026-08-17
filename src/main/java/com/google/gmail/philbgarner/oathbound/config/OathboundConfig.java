@@ -84,6 +84,7 @@ public final class OathboundConfig {
     private final List<CeremonyTemplateDefinition> ceremonyTemplates;
     private final long diplomacyBetrayalHonorPenalty;
     private final boolean pvpRestrictToDeclaredWars;
+    private final boolean ceremonyBlockTriggersEnabled;
 
     private OathboundConfig(Path sqliteFile, int resolverDepthCutoff, List<Currency> currencies,
                              Material altarCapstoneMaterial, double altarPowerRadiusScale,
@@ -106,7 +107,7 @@ public final class OathboundConfig {
                              long banishmentHoursPerCurrencyUnit, long banishmentStackCapHours,
                              BanishmentPenSpec banishmentPen, List<PveContractDefinition> pveContracts,
                              List<CeremonyTemplateDefinition> ceremonyTemplates, long diplomacyBetrayalHonorPenalty,
-                             boolean pvpRestrictToDeclaredWars) {
+                             boolean pvpRestrictToDeclaredWars, boolean ceremonyBlockTriggersEnabled) {
         this.sqliteFile = sqliteFile;
         this.resolverDepthCutoff = resolverDepthCutoff;
         this.currencies = currencies;
@@ -154,6 +155,7 @@ public final class OathboundConfig {
         this.ceremonyTemplates = ceremonyTemplates;
         this.diplomacyBetrayalHonorPenalty = diplomacyBetrayalHonorPenalty;
         this.pvpRestrictToDeclaredWars = pvpRestrictToDeclaredWars;
+        this.ceremonyBlockTriggersEnabled = ceremonyBlockTriggersEnabled;
     }
 
     public static OathboundConfig load(FileConfiguration config, Path dataFolder) {
@@ -283,6 +285,7 @@ public final class OathboundConfig {
         List<CeremonyTemplateDefinition> ceremonyTemplates = parseCeremonyTemplates(config.getMapList("ceremony-templates"));
         long diplomacyBetrayalHonorPenalty = config.getLong("diplomacy.betrayal-honor-penalty", 20L);
         boolean pvpRestrictToDeclaredWars = config.getBoolean("pvp.restrict-to-declared-wars", false);
+        boolean ceremonyBlockTriggersEnabled = config.getBoolean("ceremony-block-triggers-enabled", true);
 
         return new OathboundConfig(dataFolder.resolve(sqliteFileName), depthCutoff, currencies,
                 capstoneMaterial, powerRadiusScale, Map.copyOf(tierMultipliers),
@@ -297,7 +300,7 @@ public final class OathboundConfig {
                 bountyBreachDiscountWindow, bountyBreachDiscountFraction, bountyAbandonInactivityThreshold,
                 banishmentMinHours, banishmentMaxHours, banishmentHoursPerCurrencyUnit, banishmentStackCapHours,
                 banishmentPen, pveContracts, ceremonyTemplates, diplomacyBetrayalHonorPenalty,
-                pvpRestrictToDeclaredWars);
+                pvpRestrictToDeclaredWars, ceremonyBlockTriggersEnabled);
     }
 
     private static List<PveContractDefinition> parsePveContracts(List<Map<?, ?>> raw) {
@@ -596,5 +599,9 @@ public final class OathboundConfig {
 
     public boolean pvpRestrictToDeclaredWars() {
         return pvpRestrictToDeclaredWars;
+    }
+
+    public boolean ceremonyBlockTriggersEnabled() {
+        return ceremonyBlockTriggersEnabled;
     }
 }
