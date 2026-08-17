@@ -10,6 +10,10 @@ import java.util.UUID;
 public interface ConditionContext {
     int deathCount(EntityRef target);
 
+    int pvpDeathCount(EntityRef target);
+
+    int mobKillCount(PlayerRef killer, String mobTypeName);
+
     long amountPaid(Currency currency);
 
     boolean isBallotDecided(UUID ballotRef);

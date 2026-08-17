@@ -13,6 +13,7 @@ import com.google.gmail.philbgarner.oathbound.bounty.BountyAbandonmentSweepServi
 import com.google.gmail.philbgarner.oathbound.bounty.BountyService;
 import com.google.gmail.philbgarner.oathbound.bounty.PveContractProgress;
 import com.google.gmail.philbgarner.oathbound.bounty.PveContractService;
+import com.google.gmail.philbgarner.oathbound.ceremony.CeremonyService;
 import com.google.gmail.philbgarner.oathbound.command.OathboundBountyCommand;
 import com.google.gmail.philbgarner.oathbound.command.OathboundDebugCommand;
 import com.google.gmail.philbgarner.oathbound.command.OathboundNotaryCommand;
@@ -50,6 +51,9 @@ import com.google.gmail.philbgarner.oathbound.listener.BanishmentLoginListener;
 import com.google.gmail.philbgarner.oathbound.listener.BanishmentRespawnListener;
 import com.google.gmail.philbgarner.oathbound.listener.BountyKillListener;
 import com.google.gmail.philbgarner.oathbound.listener.BountyLoginNoticeListener;
+import com.google.gmail.philbgarner.oathbound.listener.CeremonyChatListener;
+import com.google.gmail.philbgarner.oathbound.listener.CeremonyInteractListener;
+import com.google.gmail.philbgarner.oathbound.listener.MobKillTrackingListener;
 import com.google.gmail.philbgarner.oathbound.listener.PveKillListener;
 import com.google.gmail.philbgarner.oathbound.listener.ClaimBuildGuardListener;
 import com.google.gmail.philbgarner.oathbound.listener.DeathTrackingListener;
@@ -68,6 +72,7 @@ import com.google.gmail.philbgarner.oathbound.oath.EscrowClaim;
 import com.google.gmail.philbgarner.oathbound.oath.EscrowExpiryService;
 import com.google.gmail.philbgarner.oathbound.oath.Ledger;
 import com.google.gmail.philbgarner.oathbound.oath.ManualConfirmStore;
+import com.google.gmail.philbgarner.oathbound.oath.MobKillTracker;
 import com.google.gmail.philbgarner.oathbound.oath.NegotiationExpiryService;
 import com.google.gmail.philbgarner.oathbound.oath.Oath;
 import com.google.gmail.philbgarner.oathbound.oath.OathService;
@@ -106,6 +111,7 @@ public final class OathboundPlugin extends JavaPlugin {
     private OwnershipResolver ownershipResolver;
     private AltarRadiusCalculator altarRadiusCalculator;
     private DeathTracker deathTracker;
+    private MobKillTracker mobKillTracker;
     private ManualConfirmStore manualConfirmStore;
     private ConditionEngine conditionEngine;
     private EscrowExpiryService escrowExpiryService;
@@ -120,6 +126,8 @@ public final class OathboundPlugin extends JavaPlugin {
     private BountyAbandonmentSweepService bountyAbandonmentSweepService;
     private BountyPlacementListener bountyPlacementListener;
     private PveContractService pveContractService;
+    private CeremonyService ceremonyService;
+    private CeremonyChatListener ceremonyChatListener;
 
     private final Map<UUID, ProtectionGroup> groupCache = new ConcurrentHashMap<>();
     private final Map<UUID, Oath> oathCache = new ConcurrentHashMap<>();
@@ -179,6 +187,14 @@ public final class OathboundPlugin extends JavaPlugin {
                 getLogger().log(Level.SEVERE, "Failed to persist death record " + record.id(), e);
             }
         }));
+        mobKillTracker = new MobKillTracker();
+        mobKillTracker.addListener(record -> persistenceExecutor.submit(() -> {
+            try {
+                dataStore.appendMobKillRecord(record);
+            } catch (DataStoreException e) {
+                getLogger().log(Level.SEVERE, "Failed to persist mob kill record " + record.id(), e);
+            }
+        }));
         manualConfirmStore = new ManualConfirmStore();
 
         oathService = new OathService(ledger);
@@ -188,7 +204,7 @@ public final class OathboundPlugin extends JavaPlugin {
         altarRadiusCalculator = new AltarRadiusCalculator(
                 oathboundConfig.altarPowerRadiusScale(), oathboundConfig.altarTierRadiusMultipliers());
         conditionEngine = new ConditionEngine(oathService, ownershipResolver, economyService,
-                id -> Optional.ofNullable(groupCache.get(id)), deathTracker, manualConfirmStore);
+                id -> Optional.ofNullable(groupCache.get(id)), deathTracker, mobKillTracker, manualConfirmStore);
         escrowExpiryService = new EscrowExpiryService();
         negotiationExpiryService = new NegotiationExpiryService();
         altarDecaySweepService = new AltarDecaySweepService();
@@ -205,6 +221,8 @@ public final class OathboundPlugin extends JavaPlugin {
         bountyAbandonmentSweepService = new BountyAbandonmentSweepService();
         bountyPlacementListener = new BountyPlacementListener(this);
         pveContractService = new PveContractService(economyService);
+        ceremonyService = new CeremonyService(groupCache::values);
+        ceremonyChatListener = new CeremonyChatListener(this);
 
         loadExistingState();
 
@@ -279,6 +297,9 @@ public final class OathboundPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new BanishmentLoginListener(this), this);
         getServer().getPluginManager().registerEvents(new BountyLoginNoticeListener(this), this);
         getServer().getPluginManager().registerEvents(new PveKillListener(this), this);
+        getServer().getPluginManager().registerEvents(new MobKillTrackingListener(this), this);
+        getServer().getPluginManager().registerEvents(new CeremonyInteractListener(this), this);
+        getServer().getPluginManager().registerEvents(ceremonyChatListener, this);
 
         getServer().getScheduler().runTaskTimer(this, this::runConditionEngineTick, 100L, 100L);
 
@@ -464,6 +485,11 @@ public final class OathboundPlugin extends JavaPlugin {
                 deathTracker.loadExisting(record);
                 deathRecordCount++;
             }
+            int mobKillRecordCount = 0;
+            for (var record : dataStore.loadAllMobKillRecords()) {
+                mobKillTracker.loadExisting(record);
+                mobKillRecordCount++;
+            }
             for (EscrowClaim claim : dataStore.loadAllEscrowClaims()) {
                 escrowClaimCache.put(claim.id(), claim);
             }
@@ -500,7 +526,7 @@ public final class OathboundPlugin extends JavaPlugin {
                     + protectionCache.size() + " protection(s), " + honorCount + " honor record(s), "
                     + notaryCache.size() + " notary/notaries, " + oathBoardCache.size() + " oath board(s), "
                     + villagerNpcCache.size() + " villager shop NPC(s), " + bountyCache.size() + " bounty/bounties, "
-                    + banishmentCache.size() + " banishment(s) from storage.");
+                    + banishmentCache.size() + " banishment(s), " + mobKillRecordCount + " mob kill record(s) from storage.");
         } catch (DataStoreException e) {
             getLogger().log(Level.SEVERE, "Failed to load persisted state", e);
         }
@@ -744,6 +770,10 @@ public final class OathboundPlugin extends JavaPlugin {
         return deathTracker;
     }
 
+    public MobKillTracker mobKillTracker() {
+        return mobKillTracker;
+    }
+
     public ManualConfirmStore manualConfirmStore() {
         return manualConfirmStore;
     }
@@ -826,5 +856,13 @@ public final class OathboundPlugin extends JavaPlugin {
 
     public PveContractService pveContractService() {
         return pveContractService;
+    }
+
+    public CeremonyService ceremonyService() {
+        return ceremonyService;
+    }
+
+    public CeremonyChatListener ceremonyChatListener() {
+        return ceremonyChatListener;
     }
 }

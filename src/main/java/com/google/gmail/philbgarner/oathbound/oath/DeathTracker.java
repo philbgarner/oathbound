@@ -18,8 +18,13 @@ public final class DeathTracker {
     private final List<DeathRecord> records = new ArrayList<>();
     private final List<Consumer<DeathRecord>> listeners = new CopyOnWriteArrayList<>();
 
-    public synchronized DeathRecord recordDeath(PlayerRef player) {
-        DeathRecord record = new DeathRecord(UUID.randomUUID(), player, Instant.now());
+    public DeathRecord recordDeath(PlayerRef player) {
+        return recordDeath(player, null);
+    }
+
+    /** {@code killer} is null for a death with no player killer - see {@link #countPvpSince}. */
+    public synchronized DeathRecord recordDeath(PlayerRef player, PlayerRef killer) {
+        DeathRecord record = new DeathRecord(UUID.randomUUID(), player, killer, Instant.now());
         records.add(record);
         listeners.forEach(listener -> listener.accept(record));
         return record;
@@ -34,6 +39,14 @@ public final class DeathTracker {
     public synchronized int countSince(PlayerRef player, Instant since) {
         return (int) records.stream()
                 .filter(record -> record.player().equals(player) && !record.timestamp().isBefore(since))
+                .count();
+    }
+
+    /** Like {@link #countSince}, but only counts deaths with a recorded player killer. */
+    public synchronized int countPvpSince(PlayerRef player, Instant since) {
+        return (int) records.stream()
+                .filter(record -> record.player().equals(player) && record.killer() != null
+                        && !record.timestamp().isBefore(since))
                 .count();
     }
 

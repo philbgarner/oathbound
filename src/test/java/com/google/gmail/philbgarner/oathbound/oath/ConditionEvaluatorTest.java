@@ -22,6 +22,8 @@ final class ConditionEvaluatorTest {
 
     private static final class FakeContext implements ConditionContext {
         final Map<EntityRef, Integer> deaths = new HashMap<>();
+        final Map<EntityRef, Integer> pvpDeaths = new HashMap<>();
+        final Map<String, Integer> mobKills = new HashMap<>();
         final Map<Currency, Long> paid = new HashMap<>();
         boolean ballotDecided;
         boolean manuallyConfirmed;
@@ -29,6 +31,16 @@ final class ConditionEvaluatorTest {
         @Override
         public int deathCount(EntityRef target) {
             return deaths.getOrDefault(target, 0);
+        }
+
+        @Override
+        public int pvpDeathCount(EntityRef target) {
+            return pvpDeaths.getOrDefault(target, 0);
+        }
+
+        @Override
+        public int mobKillCount(PlayerRef killer, String mobTypeName) {
+            return mobKills.getOrDefault(killer.playerId() + ":" + mobTypeName, 0);
         }
 
         @Override
@@ -72,6 +84,30 @@ final class ConditionEvaluatorTest {
 
         assertFalse(evaluator.evaluate(condition, activatedAt, activatedAt, context));
         context.deaths.put(target, 3);
+        assertTrue(evaluator.evaluate(condition, activatedAt, activatedAt, context));
+    }
+
+    @Test
+    void pvpDeathCountComparesAgainstContext() {
+        FakeContext context = new FakeContext();
+        PlayerRef target = new PlayerRef(UUID.randomUUID());
+        context.pvpDeaths.put(target, 4);
+        Condition condition = new Condition.PvpDeathCount(target, 5);
+
+        assertFalse(evaluator.evaluate(condition, activatedAt, activatedAt, context));
+        context.pvpDeaths.put(target, 5);
+        assertTrue(evaluator.evaluate(condition, activatedAt, activatedAt, context));
+    }
+
+    @Test
+    void mobKillCountComparesAgainstContext() {
+        FakeContext context = new FakeContext();
+        PlayerRef killer = new PlayerRef(UUID.randomUUID());
+        context.mobKills.put(killer.playerId() + ":RAVAGER", 0);
+        Condition condition = new Condition.MobKillCount(killer, "RAVAGER", 1);
+
+        assertFalse(evaluator.evaluate(condition, activatedAt, activatedAt, context));
+        context.mobKills.put(killer.playerId() + ":RAVAGER", 1);
         assertTrue(evaluator.evaluate(condition, activatedAt, activatedAt, context));
     }
 

@@ -31,6 +31,7 @@ import com.google.gmail.philbgarner.oathbound.oath.DeathRecord;
 import com.google.gmail.philbgarner.oathbound.oath.EscrowClaim;
 import com.google.gmail.philbgarner.oathbound.oath.Ledger;
 import com.google.gmail.philbgarner.oathbound.oath.LedgerEntry;
+import com.google.gmail.philbgarner.oathbound.oath.MobKillRecord;
 import com.google.gmail.philbgarner.oathbound.oath.Oath;
 import com.google.gmail.philbgarner.oathbound.oath.OathService;
 import com.google.gmail.philbgarner.oathbound.oath.OathState;
@@ -221,7 +222,7 @@ final class SqliteDataStoreTest {
         SqliteDataStore first = new SqliteDataStore(dbFile);
         first.initialize();
         try {
-            first.appendDeathRecord(new DeathRecord(recordId, victim, timestamp));
+            first.appendDeathRecord(new DeathRecord(recordId, victim, null, timestamp));
         } finally {
             first.close();
         }
@@ -233,6 +234,35 @@ final class SqliteDataStoreTest {
             assertEquals(1, records.size());
             assertEquals(recordId, records.get(0).id());
             assertEquals(victim, records.get(0).player());
+            assertEquals(timestamp, records.get(0).timestamp());
+        } finally {
+            second.close();
+        }
+    }
+
+    @Test
+    void mobKillRecordsRoundTripAcrossAReopenedConnection(@TempDir Path tempDir) throws DataStoreException {
+        Path dbFile = tempDir.resolve("oathbound.db");
+        PlayerRef killer = new PlayerRef(UUID.randomUUID());
+        Instant timestamp = Instant.now();
+        UUID recordId = UUID.randomUUID();
+
+        SqliteDataStore first = new SqliteDataStore(dbFile);
+        first.initialize();
+        try {
+            first.appendMobKillRecord(new MobKillRecord(recordId, killer, "RAVAGER", timestamp));
+        } finally {
+            first.close();
+        }
+
+        SqliteDataStore second = new SqliteDataStore(dbFile);
+        second.initialize();
+        try {
+            List<MobKillRecord> records = second.loadAllMobKillRecords();
+            assertEquals(1, records.size());
+            assertEquals(recordId, records.get(0).id());
+            assertEquals(killer, records.get(0).killer());
+            assertEquals("RAVAGER", records.get(0).mobTypeName());
             assertEquals(timestamp, records.get(0).timestamp());
         } finally {
             second.close();

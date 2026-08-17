@@ -45,17 +45,19 @@ public final class ConditionEngine {
     private final EconomyService economyService;
     private final Function<UUID, Optional<ProtectionGroup>> groupLookup;
     private final DeathTracker deathTracker;
+    private final MobKillTracker mobKillTracker;
     private final ManualConfirmStore manualConfirms;
     private final ConditionEvaluator evaluator = new ConditionEvaluator();
 
     public ConditionEngine(OathService oathService, OwnershipResolver ownershipResolver,
                             EconomyService economyService, Function<UUID, Optional<ProtectionGroup>> groupLookup,
-                            DeathTracker deathTracker, ManualConfirmStore manualConfirms) {
+                            DeathTracker deathTracker, MobKillTracker mobKillTracker, ManualConfirmStore manualConfirms) {
         this.oathService = Objects.requireNonNull(oathService, "oathService");
         this.ownershipResolver = Objects.requireNonNull(ownershipResolver, "ownershipResolver");
         this.economyService = Objects.requireNonNull(economyService, "economyService");
         this.groupLookup = Objects.requireNonNull(groupLookup, "groupLookup");
         this.deathTracker = Objects.requireNonNull(deathTracker, "deathTracker");
+        this.mobKillTracker = Objects.requireNonNull(mobKillTracker, "mobKillTracker");
         this.manualConfirms = Objects.requireNonNull(manualConfirms, "manualConfirms");
     }
 
@@ -92,13 +94,13 @@ public final class ConditionEngine {
                 continue;
             }
             if (!(clause instanceof Clause.TransferClause) && !(clause instanceof Clause.EscrowClause)
-                    && !(clause instanceof Clause.KillCountClause)) {
+                    && !(clause instanceof Clause.KillCountClause) && !(clause instanceof Clause.MobKillClause)) {
                 allAutoResolvableAndDone = false;
                 continue;
             }
             if (context == null) {
                 context = new DomainConditionContext(
-                        deathTracker, manualConfirms, groupLookup, oath.id(), clauses, oath.activatedAt());
+                        deathTracker, mobKillTracker, manualConfirms, groupLookup, oath.id(), clauses, oath.activatedAt());
             }
 
             boolean resolved = switch (clause) {
@@ -110,6 +112,9 @@ public final class ConditionEngine {
                                 && executeEscrowRelease(oath, i, escrow, now, newClaims);
                 case Clause.KillCountClause killCount ->
                         evaluator.evaluate(new Condition.DeathCount(killCount.target(), killCount.quantity()),
+                                oath.activatedAt(), now, context);
+                case Clause.MobKillClause mobKill ->
+                        evaluator.evaluate(new Condition.MobKillCount(mobKill.obligor(), mobKill.mobTypeName(), mobKill.quantity()),
                                 oath.activatedAt(), now, context);
                 default -> false;
             };

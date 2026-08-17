@@ -32,6 +32,13 @@ public sealed interface Clause {
     record KillCountClause(EntityRef target, int quantity) implements Clause {
     }
 
+    /** Resolves once {@code obligor} kills {@code quantity} of {@code mobTypeName} - same shape as
+     * {@link KillCountClause}, resolving the condition <em>is</em> fulfilling it, no separate execute
+     * step. {@code mobTypeName} is a plain {@code org.bukkit.entity.EntityType} name rather than the
+     * enum itself, since this package is Bukkit-free by design. */
+    record MobKillClause(PlayerRef obligor, String mobTypeName, int quantity) implements Clause {
+    }
+
     record ReleaseStep(double fraction, Condition condition) {
     }
 }

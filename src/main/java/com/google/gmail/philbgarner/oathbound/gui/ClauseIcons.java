@@ -28,6 +28,10 @@ final class ClauseIcons {
             case Clause.KillCountClause killCount -> GuiItems.button(Material.IRON_SWORD, "Kill Count",
                     "Target: " + entityName(killCount.target(), groupCache),
                     "Required kills: " + killCount.quantity());
+            case Clause.MobKillClause mobKill -> GuiItems.button(Material.SPAWNER, "Mob Kill",
+                    "Obligor: " + playerName(mobKill.obligor()),
+                    "Mob: " + mobKill.mobTypeName(),
+                    "Required kills: " + mobKill.quantity());
             case Clause.EscrowClause escrow -> GuiItems.button(Material.CHEST, "Escrow", "(not supported here)");
         };
     }

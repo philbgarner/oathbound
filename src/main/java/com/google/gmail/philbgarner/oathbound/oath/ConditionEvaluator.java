@@ -10,6 +10,9 @@ public final class ConditionEvaluator {
             case Condition.Immediate ignored -> true;
             case Condition.TimeElapsed(var duration) -> !now.isBefore(activatedAt.plus(duration));
             case Condition.DeathCount(var target, var count) -> context.deathCount(target) >= count;
+            case Condition.PvpDeathCount(var target, var count) -> context.pvpDeathCount(target) >= count;
+            case Condition.MobKillCount(var killer, var mobTypeName, var count) ->
+                    context.mobKillCount(killer, mobTypeName) >= count;
             case Condition.PaymentReceived(var amount, var currency) -> context.amountPaid(currency) >= amount;
             case Condition.VoteTally(var ballotRef) -> context.isBallotDecided(ballotRef);
             case Condition.ManualConfirm(var party) -> context.isManuallyConfirmed(party);

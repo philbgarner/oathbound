@@ -11,6 +11,8 @@ import com.google.gmail.philbgarner.oathbound.bounty.Bounty;
 import com.google.gmail.philbgarner.oathbound.bounty.BountyTarget;
 import com.google.gmail.philbgarner.oathbound.bounty.BountyTargeting;
 import com.google.gmail.philbgarner.oathbound.bounty.HeatCalculator;
+import com.google.gmail.philbgarner.oathbound.bukkit.CeremonyItems;
+import com.google.gmail.philbgarner.oathbound.ceremony.CeremonyTemplateDefinition;
 import com.google.gmail.philbgarner.oathbound.economy.EconomyService;
 import com.google.gmail.philbgarner.oathbound.group.EntityRef;
 import com.google.gmail.philbgarner.oathbound.group.GroupPermission;
@@ -37,6 +39,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -50,7 +53,8 @@ import java.util.stream.Collectors;
 public final class OathboundDebugCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> TOP_LEVEL =
-            List.of("group", "oath", "ledger", "altar", "honor", "notary", "board", "villager", "bounty", "banishment");
+            List.of("group", "oath", "ledger", "altar", "honor", "notary", "board", "villager", "bounty",
+                    "banishment", "ceremony");
     private static final List<String> GROUP_SUB = List.of("create", "transfer", "info", "list");
     private static final List<String> OATH_SUB = List.of("create", "addflag", "confirm", "propose", "seal",
             "activate", "fulfill", "breach", "void", "info", "list");
@@ -61,6 +65,7 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
     private static final List<String> VILLAGER_SUB = List.of("list", "info", "remove");
     private static final List<String> BOUNTY_SUB = List.of("list", "info", "cancel", "heat");
     private static final List<String> BANISHMENT_SUB = List.of("list", "info", "release", "set-pen");
+    private static final List<String> CEREMONY_SUB = List.of("give", "list");
 
     private final OathboundPlugin plugin;
 
@@ -90,6 +95,7 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
                 case "villager" -> handleVillager(player, args);
                 case "bounty" -> handleBounty(player, args);
                 case "banishment" -> handleBanishment(player, args);
+                case "ceremony" -> handleCeremony(player, args);
                 default -> sender.sendMessage("Unknown top-level command: " + args[0]);
             }
         } catch (OathTransitionException e) {
@@ -766,6 +772,58 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
         sender.sendMessage("Banishment pen set to your current location and saved to config.yml.");
     }
 
+    // ---- ceremony ----
+
+    private void handleCeremony(Player sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage("Usage: /oathbound-debug ceremony <give|list> ...");
+            return;
+        }
+        switch (args[1].toLowerCase()) {
+            case "give" -> ceremonyGive(sender, args);
+            case "list" -> ceremonyList(sender);
+            default -> sender.sendMessage("Unknown ceremony subcommand: " + args[1]);
+        }
+    }
+
+    private void ceremonyGive(Player sender, String[] args) {
+        if (args.length < 4) {
+            sender.sendMessage("Usage: /oathbound-debug ceremony give <templateId> <groupId> [player]");
+            return;
+        }
+        Optional<CeremonyTemplateDefinition> template = plugin.oathboundConfig().ceremonyTemplates().stream()
+                .filter(t -> t.id().equals(args[2]))
+                .findFirst();
+        if (template.isEmpty()) {
+            sender.sendMessage("No such ceremony template: " + args[2]);
+            return;
+        }
+        Optional<ProtectionGroup> group = findGroup(args[3]);
+        if (group.isEmpty()) {
+            sender.sendMessage("No such group: " + args[3]);
+            return;
+        }
+        Player recipient = args.length >= 5 ? Bukkit.getPlayer(args[4]) : sender;
+        if (recipient == null) {
+            sender.sendMessage("Player not online: " + args[4]);
+            return;
+        }
+        ItemStack item = CeremonyItems.build(plugin, template.get(), group.get().id());
+        recipient.getInventory().addItem(item);
+        sender.sendMessage("Gave " + recipient.getName() + " a '" + template.get().displayName()
+                + "' ceremony item bound to group '" + group.get().name() + "'.");
+    }
+
+    private void ceremonyList(Player sender) {
+        if (plugin.oathboundConfig().ceremonyTemplates().isEmpty()) {
+            sender.sendMessage("No ceremony templates configured.");
+            return;
+        }
+        for (CeremonyTemplateDefinition template : plugin.oathboundConfig().ceremonyTemplates()) {
+            sender.sendMessage(template.id() + " '" + template.displayName() + "' clauses=" + template.clauses().size());
+        }
+    }
+
     // ---- lookups ----
 
     private Optional<Altar> findAltar(String idString) {
@@ -847,6 +905,7 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
                 case "villager" -> filter(VILLAGER_SUB, args[1]);
                 case "bounty" -> filter(BOUNTY_SUB, args[1]);
                 case "banishment" -> filter(BANISHMENT_SUB, args[1]);
+                case "ceremony" -> filter(CEREMONY_SUB, args[1]);
                 default -> new ArrayList<>();
             };
         }

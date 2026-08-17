@@ -15,6 +15,7 @@ import com.google.gmail.philbgarner.oathbound.notary.Notary;
 import com.google.gmail.philbgarner.oathbound.oath.DeathRecord;
 import com.google.gmail.philbgarner.oathbound.oath.EscrowClaim;
 import com.google.gmail.philbgarner.oathbound.oath.LedgerEntry;
+import com.google.gmail.philbgarner.oathbound.oath.MobKillRecord;
 import com.google.gmail.philbgarner.oathbound.oath.Oath;
 import com.google.gmail.philbgarner.oathbound.persistence.DataStore;
 import com.google.gmail.philbgarner.oathbound.persistence.DataStoreException;
@@ -60,7 +61,8 @@ public final class SqliteDataStore implements DataStore {
             "db/migrations/0008_notaries.sql",
             "db/migrations/0009_oath_boards.sql",
             "db/migrations/0010_villager_npcs.sql",
-            "db/migrations/0011_bounty.sql"
+            "db/migrations/0011_bounty.sql",
+            "db/migrations/0012_mob_kill_records.sql"
     );
 
     private final Path databaseFile;
@@ -490,6 +492,35 @@ public final class SqliteDataStore implements DataStore {
             }
         } catch (SQLException e) {
             throw new DataStoreException("Failed to load all death records", e);
+        }
+        return result;
+    }
+
+    @Override
+    public synchronized void appendMobKillRecord(MobKillRecord record) throws DataStoreException {
+        String json = gson.toJson(record);
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "INSERT INTO mob_kill_records(id, killer_id, timestamp, data) VALUES (?, ?, ?, ?)")) {
+            stmt.setString(1, record.id().toString());
+            stmt.setString(2, record.killer().playerId().toString());
+            stmt.setString(3, record.timestamp().toString());
+            stmt.setString(4, json);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to append mob kill record " + record.id(), e);
+        }
+    }
+
+    @Override
+    public synchronized List<MobKillRecord> loadAllMobKillRecords() throws DataStoreException {
+        List<MobKillRecord> result = new ArrayList<>();
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT data FROM mob_kill_records")) {
+            while (rs.next()) {
+                result.add(gson.fromJson(rs.getString(1), MobKillRecord.class));
+            }
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to load all mob kill records", e);
         }
         return result;
     }

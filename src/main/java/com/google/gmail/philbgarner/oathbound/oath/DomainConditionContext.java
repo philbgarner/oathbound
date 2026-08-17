@@ -22,16 +22,18 @@ import java.util.function.Function;
 final class DomainConditionContext implements ConditionContext {
 
     private final DeathTracker deathTracker;
+    private final MobKillTracker mobKillTracker;
     private final ManualConfirmStore manualConfirms;
     private final Function<UUID, Optional<ProtectionGroup>> groupLookup;
     private final UUID oathId;
     private final List<Clause> clauses;
     private final Instant since;
 
-    DomainConditionContext(DeathTracker deathTracker, ManualConfirmStore manualConfirms,
+    DomainConditionContext(DeathTracker deathTracker, MobKillTracker mobKillTracker, ManualConfirmStore manualConfirms,
                             Function<UUID, Optional<ProtectionGroup>> groupLookup, UUID oathId,
                             List<Clause> clauses, Instant since) {
         this.deathTracker = Objects.requireNonNull(deathTracker, "deathTracker");
+        this.mobKillTracker = Objects.requireNonNull(mobKillTracker, "mobKillTracker");
         this.manualConfirms = Objects.requireNonNull(manualConfirms, "manualConfirms");
         this.groupLookup = Objects.requireNonNull(groupLookup, "groupLookup");
         this.oathId = Objects.requireNonNull(oathId, "oathId");
@@ -49,6 +51,23 @@ final class DomainConditionContext implements ConditionContext {
                             .sum())
                     .orElse(0);
         };
+    }
+
+    @Override
+    public int pvpDeathCount(EntityRef target) {
+        return switch (target) {
+            case PlayerRef player -> deathTracker.countPvpSince(player, since);
+            case ProtectionGroupRef groupRef -> groupLookup.apply(groupRef.groupId())
+                    .map(group -> group.members().stream()
+                            .mapToInt(member -> deathTracker.countPvpSince(member.player(), since))
+                            .sum())
+                    .orElse(0);
+        };
+    }
+
+    @Override
+    public int mobKillCount(PlayerRef killer, String mobTypeName) {
+        return mobKillTracker.countSince(killer, mobTypeName, since);
     }
 
     /** Sums how much of {@code currency} this oath's own escrow clauses hold - deposited items/currency

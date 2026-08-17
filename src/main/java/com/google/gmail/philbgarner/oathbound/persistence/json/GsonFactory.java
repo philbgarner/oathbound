@@ -33,6 +33,8 @@ public final class GsonFactory {
                         Map.entry("immediate", Condition.Immediate.class),
                         Map.entry("time_elapsed", Condition.TimeElapsed.class),
                         Map.entry("death_count", Condition.DeathCount.class),
+                        Map.entry("pvp_death_count", Condition.PvpDeathCount.class),
+                        Map.entry("mob_kill_count", Condition.MobKillCount.class),
                         Map.entry("payment_received", Condition.PaymentReceived.class),
                         Map.entry("vote_tally", Condition.VoteTally.class),
                         Map.entry("manual_confirm", Condition.ManualConfirm.class),
@@ -42,7 +44,8 @@ public final class GsonFactory {
                         "transfer", Clause.TransferClause.class,
                         "escrow", Clause.EscrowClause.class,
                         "custom_flag", Clause.CustomFlagClause.class,
-                        "kill_count", Clause.KillCountClause.class
+                        "kill_count", Clause.KillCountClause.class,
+                        "mob_kill", Clause.MobKillClause.class
                 )))
                 .registerTypeAdapterFactory(new PolymorphicTypeAdapterFactory<>(BountyTarget.class, Map.of(
                         "solo", BountyTarget.Solo.class,

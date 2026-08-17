@@ -13,6 +13,7 @@ import com.google.gmail.philbgarner.oathbound.notary.Notary;
 import com.google.gmail.philbgarner.oathbound.oath.DeathRecord;
 import com.google.gmail.philbgarner.oathbound.oath.EscrowClaim;
 import com.google.gmail.philbgarner.oathbound.oath.LedgerEntry;
+import com.google.gmail.philbgarner.oathbound.oath.MobKillRecord;
 import com.google.gmail.philbgarner.oathbound.oath.Oath;
 import com.google.gmail.philbgarner.oathbound.protection.Protection;
 import com.google.gmail.philbgarner.oathbound.villager.VillagerNpc;
@@ -80,6 +81,10 @@ public interface DataStore {
     void appendDeathRecord(DeathRecord record) throws DataStoreException;
 
     List<DeathRecord> loadAllDeathRecords() throws DataStoreException;
+
+    void appendMobKillRecord(MobKillRecord record) throws DataStoreException;
+
+    List<MobKillRecord> loadAllMobKillRecords() throws DataStoreException;
 
     void saveEscrowClaim(EscrowClaim claim) throws DataStoreException;
 

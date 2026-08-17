@@ -162,6 +162,44 @@ pve-contracts: []
 #     reward:
 #       coin: 200
 
+# Ceremony Designer templates - bind a group-to-individual agreement with a tagged item and a
+# right-click, no menus or commands. Give the item via
+# /oathbound-debug ceremony give <templateId> <groupId> [player] - the group id is the liege
+# ProtectionGroup territory reverts to, so the same template can be reused by any liege for any of
+# their own groups. Right-clicking another player with the item speaks 'dialogue' to them; replying
+# with one of 'confirm-phrases' seals and activates the oath immediately.
+ceremony-templates: []
+# Example:
+# ceremony-templates:
+#   - id: fealty
+#     display-name: "Oath of Fealty"
+#     item-material: NETHERITE_SWORD
+#     item-display-name: "Scepter of Avalon"
+#     dialogue:
+#       - "By this blade, {initiator} calls you to kneel, {target}."
+#       - "Swear fealty: your land answers to the Crown should you fall in battle five times."
+#       - "Swear tribute: wheat to Alaric, logs to Bryn."
+#       - "Swear a hunt: bring low the Ravager that haunts the eastern woods."
+#       - "Do you agree?"
+#     confirm-phrases: ["i do", "yes", "i swear it"]
+#     decline-phrases: ["no", "i refuse"]
+#     prompt-timeout-seconds: 60
+#     blood-oath: false
+#     clauses:
+#       - type: transfer
+#         pvp-death-count: 5
+#       - type: tribute
+#         recipient: Alaric
+#         material: WHEAT
+#         quantity: 64
+#       - type: tribute
+#         recipient: Bryn
+#         material: OAK_LOG
+#         quantity: 64
+#       - type: mob-kill
+#         mob: RAVAGER
+#         quantity: 1
+
 villagers:
   # Each role's shop NPCs all share one fixed buy/sell list, edited here - not a per-instance builder.
   # 'sells' = the NPC sells to the player (player pays, receives the item).

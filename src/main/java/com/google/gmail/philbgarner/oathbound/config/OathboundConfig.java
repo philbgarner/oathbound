@@ -1,6 +1,8 @@
 package com.google.gmail.philbgarner.oathbound.config;
 
 import com.google.gmail.philbgarner.oathbound.bounty.PveContractDefinition;
+import com.google.gmail.philbgarner.oathbound.ceremony.CeremonyClauseSpec;
+import com.google.gmail.philbgarner.oathbound.ceremony.CeremonyTemplateDefinition;
 import com.google.gmail.philbgarner.oathbound.economy.Currency;
 import com.google.gmail.philbgarner.oathbound.group.GroupTier;
 import com.google.gmail.philbgarner.oathbound.honor.HonorTiers;
@@ -79,6 +81,7 @@ public final class OathboundConfig {
     private final long banishmentStackCapHours;
     private final BanishmentPenSpec banishmentPen;
     private final List<PveContractDefinition> pveContracts;
+    private final List<CeremonyTemplateDefinition> ceremonyTemplates;
 
     private OathboundConfig(Path sqliteFile, int resolverDepthCutoff, List<Currency> currencies,
                              Material altarCapstoneMaterial, double altarPowerRadiusScale,
@@ -99,7 +102,8 @@ public final class OathboundConfig {
                              Duration bountyBreachDiscountWindow, double bountyBreachDiscountFraction,
                              Duration bountyAbandonInactivityThreshold, long banishmentMinHours, long banishmentMaxHours,
                              long banishmentHoursPerCurrencyUnit, long banishmentStackCapHours,
-                             BanishmentPenSpec banishmentPen, List<PveContractDefinition> pveContracts) {
+                             BanishmentPenSpec banishmentPen, List<PveContractDefinition> pveContracts,
+                             List<CeremonyTemplateDefinition> ceremonyTemplates) {
         this.sqliteFile = sqliteFile;
         this.resolverDepthCutoff = resolverDepthCutoff;
         this.currencies = currencies;
@@ -144,6 +148,7 @@ public final class OathboundConfig {
         this.banishmentStackCapHours = banishmentStackCapHours;
         this.banishmentPen = banishmentPen;
         this.pveContracts = pveContracts;
+        this.ceremonyTemplates = ceremonyTemplates;
     }
 
     public static OathboundConfig load(FileConfiguration config, Path dataFolder) {
@@ -270,6 +275,7 @@ public final class OathboundConfig {
                 (float) config.getDouble("banishment.pen.pitch", 0.0));
 
         List<PveContractDefinition> pveContracts = parsePveContracts(config.getMapList("pve-contracts"));
+        List<CeremonyTemplateDefinition> ceremonyTemplates = parseCeremonyTemplates(config.getMapList("ceremony-templates"));
 
         return new OathboundConfig(dataFolder.resolve(sqliteFileName), depthCutoff, currencies,
                 capstoneMaterial, powerRadiusScale, Map.copyOf(tierMultipliers),
@@ -283,7 +289,7 @@ public final class OathboundConfig {
                 bountyFeeBase, bountyHeatFeeMultiplier, bountyHeatDecayWindow, bountyMaxPlacementsPer24h,
                 bountyBreachDiscountWindow, bountyBreachDiscountFraction, bountyAbandonInactivityThreshold,
                 banishmentMinHours, banishmentMaxHours, banishmentHoursPerCurrencyUnit, banishmentStackCapHours,
-                banishmentPen, pveContracts);
+                banishmentPen, pveContracts, ceremonyTemplates);
     }
 
     private static List<PveContractDefinition> parsePveContracts(List<Map<?, ?>> raw) {
@@ -310,6 +316,76 @@ public final class OathboundConfig {
             result.add(new PveContractDefinition(id, displayName, mobTypeName, quantity, reward));
         }
         return result;
+    }
+
+    private static List<CeremonyTemplateDefinition> parseCeremonyTemplates(List<Map<?, ?>> raw) {
+        List<CeremonyTemplateDefinition> result = new ArrayList<>();
+        for (Map<?, ?> entry : raw) {
+            String id = String.valueOf(entry.get("id"));
+            String displayName = String.valueOf(entry.get("display-name"));
+            String itemMaterialName = String.valueOf(entry.get("item-material"));
+            if (Material.matchMaterial(itemMaterialName) == null) {
+                throw new IllegalArgumentException("Unknown ceremony-templates item-material: " + itemMaterialName);
+            }
+            String itemDisplayName = String.valueOf(entry.get("item-display-name"));
+            List<String> dialogue = stringList(entry.get("dialogue"));
+            List<String> confirmPhrases = stringList(entry.get("confirm-phrases"));
+            List<String> declinePhrases = stringList(entry.get("decline-phrases"));
+            int promptTimeoutSeconds = entry.containsKey("prompt-timeout-seconds")
+                    ? ((Number) entry.get("prompt-timeout-seconds")).intValue() : 60;
+            boolean bloodOath = Boolean.TRUE.equals(entry.get("blood-oath"));
+            List<CeremonyClauseSpec> clauses = parseCeremonyClauses(rawMapList(entry.get("clauses")));
+            result.add(new CeremonyTemplateDefinition(id, displayName, itemMaterialName, itemDisplayName,
+                    dialogue, confirmPhrases, declinePhrases, promptTimeoutSeconds, bloodOath, clauses));
+        }
+        return result;
+    }
+
+    private static List<CeremonyClauseSpec> parseCeremonyClauses(List<Map<?, ?>> raw) {
+        List<CeremonyClauseSpec> result = new ArrayList<>();
+        for (Map<?, ?> entry : raw) {
+            String type = String.valueOf(entry.get("type"));
+            result.add(switch (type) {
+                case "transfer" -> new CeremonyClauseSpec.TransferSpec(
+                        ((Number) entry.get("pvp-death-count")).intValue());
+                case "tribute" -> {
+                    String materialName = String.valueOf(entry.get("material"));
+                    if (Material.matchMaterial(materialName) == null) {
+                        throw new IllegalArgumentException("Unknown ceremony-templates tribute material: " + materialName);
+                    }
+                    yield new CeremonyClauseSpec.TributeSpec(String.valueOf(entry.get("recipient")), materialName,
+                            ((Number) entry.get("quantity")).intValue());
+                }
+                case "mob-kill" -> {
+                    String mobName = String.valueOf(entry.get("mob"));
+                    String mobTypeName;
+                    try {
+                        mobTypeName = EntityType.valueOf(mobName.toUpperCase()).name();
+                    } catch (IllegalArgumentException e) {
+                        throw new IllegalArgumentException("Unknown ceremony-templates mob: " + mobName, e);
+                    }
+                    yield new CeremonyClauseSpec.MobKillSpec(mobTypeName, ((Number) entry.get("quantity")).intValue());
+                }
+                case "custom-flag" -> new CeremonyClauseSpec.CustomFlagSpec(String.valueOf(entry.get("text")));
+                default -> throw new IllegalArgumentException("Unknown ceremony-templates clause type: " + type);
+            });
+        }
+        return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<?, ?>> rawMapList(Object raw) {
+        if (!(raw instanceof List<?> list)) {
+            return List.of();
+        }
+        return (List<Map<?, ?>>) list;
+    }
+
+    private static List<String> stringList(Object raw) {
+        if (!(raw instanceof List<?> list)) {
+            return List.of();
+        }
+        return list.stream().map(String::valueOf).toList();
     }
 
     private static List<VillagerTradeOffer> parseTradeOffers(List<Map<?, ?>> raw) {
@@ -500,5 +576,9 @@ public final class OathboundConfig {
 
     public List<PveContractDefinition> pveContracts() {
         return pveContracts;
+    }
+
+    public List<CeremonyTemplateDefinition> ceremonyTemplates() {
+        return ceremonyTemplates;
     }
 }

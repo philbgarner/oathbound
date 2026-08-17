@@ -21,6 +21,16 @@ public sealed interface Condition {
     record DeathCount(EntityRef target, int count) implements Condition {
     }
 
+    /** Like {@link DeathCount}, but only counts deaths with a recorded player killer - see
+     * {@link DeathTracker#countPvpSince}. */
+    record PvpDeathCount(EntityRef target, int count) implements Condition {
+    }
+
+    /** Backs {@link Clause.MobKillClause} - synthesized on the fly by {@link ConditionEngine}, the same
+     * way it already synthesizes a {@link DeathCount} to evaluate {@link Clause.KillCountClause}. */
+    record MobKillCount(PlayerRef killer, String mobTypeName, int count) implements Condition {
+    }
+
     record PaymentReceived(long amount, Currency currency) implements Condition {
     }
 

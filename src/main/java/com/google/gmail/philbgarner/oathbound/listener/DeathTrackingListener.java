@@ -18,6 +18,9 @@ public final class DeathTrackingListener implements Listener {
 
     @EventHandler
     public void onDeath(PlayerDeathEvent event) {
-        plugin.deathTracker().recordDeath(new PlayerRef(event.getEntity().getUniqueId()));
+        PlayerRef killer = event.getEntity().getKiller() != null
+                ? new PlayerRef(event.getEntity().getKiller().getUniqueId())
+                : null;
+        plugin.deathTracker().recordDeath(new PlayerRef(event.getEntity().getUniqueId()), killer);
     }
 }

@@ -36,6 +36,7 @@ final class ConditionEngineTest {
     private OwnershipResolver ownershipResolver;
     private EconomyService economyService;
     private DeathTracker deathTracker;
+    private MobKillTracker mobKillTracker;
     private ManualConfirmStore manualConfirms;
     private ConditionEngine engine;
 
@@ -47,9 +48,10 @@ final class ConditionEngineTest {
         ownershipResolver = new OwnershipResolver(id -> Optional.ofNullable(groups.get(id)), 10);
         economyService = new EconomyService(List.of(coin));
         deathTracker = new DeathTracker();
+        mobKillTracker = new MobKillTracker();
         manualConfirms = new ManualConfirmStore();
         engine = new ConditionEngine(oathService, ownershipResolver, economyService,
-                id -> Optional.ofNullable(groups.get(id)), deathTracker, manualConfirms);
+                id -> Optional.ofNullable(groups.get(id)), deathTracker, mobKillTracker, manualConfirms);
     }
 
     private ProtectionGroup group(PlayerRef owner) {
@@ -206,6 +208,66 @@ final class ConditionEngineTest {
 
         deathTracker.recordDeath(carol);
         engine.tick(List.of(oath), Instant.now());
+        assertTrue(oath.isClauseFulfilled(0));
+        assertEquals(OathState.FULFILLED, oath.state());
+    }
+
+    @Test
+    void mobKillClauseStaysActiveUntilRequiredKillsAreTracked() {
+        ProtectionGroup farm = group(alice);
+        Oath oath = activeOathWithClauses(
+                new Clause.TransferClause(bob, new ProtectionGroupRef(farm.id()), new Condition.Immediate()),
+                new Clause.MobKillClause(bob, "RAVAGER", 2));
+
+        mobKillTracker.recordKill(bob, "RAVAGER");
+        engine.tick(List.of(oath), Instant.now());
+
+        assertEquals(bob, farm.owner());
+        assertTrue(oath.isClauseFulfilled(0));
+        assertFalse(oath.isClauseFulfilled(1));
+        assertEquals(OathState.ACTIVE, oath.state());
+    }
+
+    @Test
+    void mobKillClauseAutoFulfillsOathOnceRequiredKillsAreTracked() {
+        Oath oath = activeOathWithClauses(new Clause.MobKillClause(bob, "RAVAGER", 2));
+
+        mobKillTracker.recordKill(bob, "RAVAGER");
+        mobKillTracker.recordKill(bob, "RAVAGER");
+        engine.tick(List.of(oath), Instant.now());
+
+        assertTrue(oath.isClauseFulfilled(0));
+        assertEquals(OathState.FULFILLED, oath.state());
+    }
+
+    @Test
+    void mobKillClauseDoesNotCountADifferentMobType() {
+        Oath oath = activeOathWithClauses(new Clause.MobKillClause(bob, "RAVAGER", 1));
+
+        mobKillTracker.recordKill(bob, "ZOMBIE");
+        engine.tick(List.of(oath), Instant.now());
+
+        assertFalse(oath.isClauseFulfilled(0));
+        assertEquals(OathState.ACTIVE, oath.state());
+    }
+
+    @Test
+    void pvpDeathCountTransferOnlyCountsDeathsWithAKiller() {
+        ProtectionGroup farm = group(alice);
+        Oath oath = activeOathWithClauses(new Clause.TransferClause(
+                bob, new ProtectionGroupRef(farm.id()), new Condition.PvpDeathCount(bob, 2)));
+
+        deathTracker.recordDeath(bob);
+        deathTracker.recordDeath(bob);
+        engine.tick(List.of(oath), Instant.now());
+        assertEquals(alice, farm.owner());
+        assertFalse(oath.isClauseFulfilled(0));
+
+        deathTracker.recordDeath(bob, alice);
+        deathTracker.recordDeath(bob, alice);
+        engine.tick(List.of(oath), Instant.now());
+
+        assertEquals(bob, farm.owner());
         assertTrue(oath.isClauseFulfilled(0));
         assertEquals(OathState.FULFILLED, oath.state());
     }
