@@ -29,10 +29,11 @@ import java.util.function.Function;
  * everything releases once every step's condition is simultaneously true (an implicit AND across the
  * whole schedule), not incrementally per step - true partial/incremental release execution is future
  * work. {@link Clause.CustomFlagClause} has no condition and no effect, so it never blocks anything.
- * {@link Clause.KillCountClause} isn't executed here - its resolution semantics belong to the not-yet-
- * built Bounty/Kill Contracts phase. An oath is only auto-carried to {@code FULFILLED} once every clause
- * it contains is one this engine can and did fully resolve - if it contains a kill-count clause, it's
- * deliberately left {@code ACTIVE} rather than falsely marked complete.
+ * {@link Clause.KillCountClause} resolves once {@link DeathTracker} confirms {@code quantity} deaths of
+ * {@code target} since activation (reusing the same machinery {@link Condition.DeathCount} already
+ * provides) - it has no execution side effect of its own, unlike Transfer/Escrow, so resolving its
+ * condition <em>is</em> fulfilling it. An oath is only auto-carried to {@code FULFILLED} once every clause
+ * it contains is one this engine can and did fully resolve.
  */
 public final class ConditionEngine {
 
@@ -90,7 +91,8 @@ public final class ConditionEngine {
             if (oath.isClauseFulfilled(i)) {
                 continue;
             }
-            if (!(clause instanceof Clause.TransferClause) && !(clause instanceof Clause.EscrowClause)) {
+            if (!(clause instanceof Clause.TransferClause) && !(clause instanceof Clause.EscrowClause)
+                    && !(clause instanceof Clause.KillCountClause)) {
                 allAutoResolvableAndDone = false;
                 continue;
             }
@@ -106,6 +108,9 @@ public final class ConditionEngine {
                 case Clause.EscrowClause escrow ->
                         evaluator.evaluate(releaseCondition(escrow), oath.activatedAt(), now, context)
                                 && executeEscrowRelease(oath, i, escrow, now, newClaims);
+                case Clause.KillCountClause killCount ->
+                        evaluator.evaluate(new Condition.DeathCount(killCount.target(), killCount.quantity()),
+                                oath.activatedAt(), now, context);
                 default -> false;
             };
 

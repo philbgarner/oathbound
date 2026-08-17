@@ -5,6 +5,12 @@ import com.google.gmail.philbgarner.oathbound.altar.AltarLocation;
 import com.google.gmail.philbgarner.oathbound.altar.AltarVulnerabilityTier;
 import com.google.gmail.philbgarner.oathbound.board.BoardLocation;
 import com.google.gmail.philbgarner.oathbound.board.OathBoard;
+import com.google.gmail.philbgarner.oathbound.bounty.Banishment;
+import com.google.gmail.philbgarner.oathbound.bounty.Bounty;
+import com.google.gmail.philbgarner.oathbound.bounty.BountyStatus;
+import com.google.gmail.philbgarner.oathbound.bounty.BountyTarget;
+import com.google.gmail.philbgarner.oathbound.bounty.PveContractProgress;
+import com.google.gmail.philbgarner.oathbound.bounty.ReturnLocation;
 import com.google.gmail.philbgarner.oathbound.contract.TradeOffer;
 import com.google.gmail.philbgarner.oathbound.economy.Currency;
 import com.google.gmail.philbgarner.oathbound.economy.PlayerBalance;
@@ -167,6 +173,39 @@ final class SqliteDataStoreTest {
             assertTrue(loaded.get().activatedAt() != null);
             assertEquals(Set.of(0), loaded.get().fulfilledClauseIndices());
             assertTrue(loaded.get().isClauseFulfilled(0));
+        } finally {
+            second.close();
+        }
+    }
+
+    @Test
+    void oathWithEscrowedCurrencyRoundTripsTheCurrencyKeyedRewardMap(@TempDir Path tempDir) throws DataStoreException {
+        Path dbFile = tempDir.resolve("oathbound.db");
+        PlayerRef alice = new PlayerRef(UUID.randomUUID());
+        PlayerRef bob = new PlayerRef(UUID.randomUUID());
+        Currency coin = new Currency("coin");
+        UUID oathId;
+
+        SqliteDataStore first = new SqliteDataStore(dbFile);
+        first.initialize();
+        try {
+            OathService oathService = new OathService(new Ledger());
+            Oath oath = oathService.createDraft(List.of(alice, bob), false);
+            oathId = oath.id();
+            oathService.addClause(oath, new Clause.EscrowClause(alice, bob, List.of(), java.util.Map.of(coin, 42L),
+                    List.of(new Clause.ReleaseStep(1.0, new Condition.Immediate()))));
+            first.saveOath(oath);
+        } finally {
+            first.close();
+        }
+
+        SqliteDataStore second = new SqliteDataStore(dbFile);
+        second.initialize();
+        try {
+            Optional<Oath> loaded = second.loadOath(oathId);
+            assertTrue(loaded.isPresent());
+            Clause.EscrowClause escrow = (Clause.EscrowClause) loaded.get().clauses().get(0);
+            assertEquals(42L, escrow.currency().get(coin));
         } finally {
             second.close();
         }
@@ -467,6 +506,86 @@ final class SqliteDataStoreTest {
             assertTrue(claims.get(0).claimed());
         } finally {
             third.close();
+        }
+    }
+
+    @Test
+    void bountyBanishmentPveProgressAndOptOutsRoundTripAcrossAReopenedConnection(@TempDir Path tempDir)
+            throws DataStoreException {
+        Path dbFile = tempDir.resolve("oathbound.db");
+        PlayerRef placer = new PlayerRef(UUID.randomUUID());
+        PlayerRef victim = new PlayerRef(UUID.randomUUID());
+        UUID groupId = UUID.randomUUID();
+        Currency coin = new Currency("coin");
+        Instant now = Instant.now();
+
+        UUID bountyId;
+        UUID banishmentId;
+        UUID progressId;
+
+        SqliteDataStore first = new SqliteDataStore(dbFile);
+        first.initialize();
+        try {
+            Bounty bounty = new Bounty(UUID.randomUUID(), placer, new BountyTarget.Group(new ProtectionGroupRef(groupId)),
+                    3, 2, java.util.Map.of(coin, 300L), 25L, now, BountyStatus.ACTIVE);
+            bountyId = bounty.id();
+            first.saveBounty(bounty);
+
+            Banishment banishment = new Banishment(UUID.randomUUID(), victim, bountyId, now, now.plus(Duration.ofHours(5)),
+                    new ReturnLocation(UUID.randomUUID(), 1.5, 64.0, -2.5, 90.0f, 0.0f), false);
+            banishmentId = banishment.id();
+            first.saveBanishment(banishment);
+
+            PveContractProgress progress = new PveContractProgress(UUID.randomUUID(), placer, "spider-cull", 4, now, 1);
+            progressId = progress.id();
+            first.savePveContractProgress(progress);
+
+            first.setBountyNotificationOptOut(placer.playerId(), true);
+        } finally {
+            first.close();
+        }
+
+        SqliteDataStore second = new SqliteDataStore(dbFile);
+        second.initialize();
+        try {
+            List<Bounty> bounties = second.loadAllBounties();
+            assertEquals(1, bounties.size());
+            Bounty loadedBounty = bounties.get(0);
+            assertEquals(bountyId, loadedBounty.id());
+            assertEquals(placer, loadedBounty.placer());
+            assertEquals(new BountyTarget.Group(new ProtectionGroupRef(groupId)), loadedBounty.target());
+            assertEquals(3, loadedBounty.originalQuantity());
+            assertEquals(2, loadedBounty.remainingQuantity());
+            assertEquals(300L, loadedBounty.totalReward().get(coin));
+            assertEquals(25L, loadedBounty.feePaid());
+            assertEquals(BountyStatus.ACTIVE, loadedBounty.status());
+
+            List<Banishment> banishments = second.loadAllBanishments();
+            assertEquals(1, banishments.size());
+            assertEquals(banishmentId, banishments.get(0).id());
+            assertEquals(victim, banishments.get(0).player());
+            assertEquals(bountyId, banishments.get(0).triggeringBountyId());
+            assertFalse(banishments.get(0).released());
+
+            List<PveContractProgress> progressList = second.loadAllPveContractProgress();
+            assertEquals(1, progressList.size());
+            assertEquals(progressId, progressList.get(0).id());
+            assertEquals(4, progressList.get(0).killsSoFar());
+            assertEquals(1, progressList.get(0).timesCompleted());
+
+            Set<UUID> optOuts = second.loadBountyNotificationOptOuts();
+            assertEquals(Set.of(placer.playerId()), optOuts);
+
+            second.deleteBounty(bountyId);
+            second.deleteBanishment(banishmentId);
+            second.deletePveContractProgress(progressId);
+            second.setBountyNotificationOptOut(placer.playerId(), false);
+            assertTrue(second.loadAllBounties().isEmpty());
+            assertTrue(second.loadAllBanishments().isEmpty());
+            assertTrue(second.loadAllPveContractProgress().isEmpty());
+            assertTrue(second.loadBountyNotificationOptOuts().isEmpty());
+        } finally {
+            second.close();
         }
     }
 }

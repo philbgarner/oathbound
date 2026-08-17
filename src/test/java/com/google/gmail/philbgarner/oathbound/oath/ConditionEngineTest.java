@@ -3,6 +3,7 @@ package com.google.gmail.philbgarner.oathbound.oath;
 import com.google.gmail.philbgarner.oathbound.economy.Currency;
 import com.google.gmail.philbgarner.oathbound.economy.EconomyService;
 import com.google.gmail.philbgarner.oathbound.group.GroupTier;
+import com.google.gmail.philbgarner.oathbound.group.Member;
 import com.google.gmail.philbgarner.oathbound.group.OwnershipResolver;
 import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
@@ -153,17 +154,60 @@ final class ConditionEngineTest {
     }
 
     @Test
-    void oathWithKillCountClauseNeverAutoFulfillsEvenAfterTransferResolves() {
+    void killCountClauseStaysActiveUntilRequiredDeathsAreTracked() {
         ProtectionGroup farm = group(alice);
         Oath oath = activeOathWithClauses(
                 new Clause.TransferClause(bob, new ProtectionGroupRef(farm.id()), new Condition.Immediate()),
                 new Clause.KillCountClause(bob, 3));
 
+        deathTracker.recordDeath(bob);
+        deathTracker.recordDeath(bob);
         engine.tick(List.of(oath), Instant.now());
 
         assertEquals(bob, farm.owner());
         assertTrue(oath.isClauseFulfilled(0));
+        assertFalse(oath.isClauseFulfilled(1));
         assertEquals(OathState.ACTIVE, oath.state());
+    }
+
+    @Test
+    void killCountClauseAutoFulfillsOathOnceRequiredDeathsAreTracked() {
+        ProtectionGroup farm = group(alice);
+        Oath oath = activeOathWithClauses(
+                new Clause.TransferClause(bob, new ProtectionGroupRef(farm.id()), new Condition.Immediate()),
+                new Clause.KillCountClause(bob, 3));
+
+        deathTracker.recordDeath(bob);
+        deathTracker.recordDeath(bob);
+        deathTracker.recordDeath(bob);
+        engine.tick(List.of(oath), Instant.now());
+
+        assertEquals(bob, farm.owner());
+        assertTrue(oath.isClauseFulfilled(0));
+        assertTrue(oath.isClauseFulfilled(1));
+        assertEquals(OathState.FULFILLED, oath.state());
+    }
+
+    @Test
+    void killCountClauseOnGroupTargetSumsDeathsAcrossMembers() {
+        PlayerRef carol = new PlayerRef(UUID.randomUUID());
+        ProtectionGroup targetGroup = new ProtectionGroup(UUID.randomUUID(), "Raiders", alice, GroupTier.INDIVIDUAL);
+        targetGroup.addMember(new Member(bob, "member"));
+        targetGroup.addMember(new Member(carol, "member"));
+        groups.put(targetGroup.id(), targetGroup);
+
+        Oath oath = activeOathWithClauses(
+                new Clause.KillCountClause(new ProtectionGroupRef(targetGroup.id()), 2));
+
+        deathTracker.recordDeath(bob);
+        engine.tick(List.of(oath), Instant.now());
+        assertFalse(oath.isClauseFulfilled(0));
+        assertEquals(OathState.ACTIVE, oath.state());
+
+        deathTracker.recordDeath(carol);
+        engine.tick(List.of(oath), Instant.now());
+        assertTrue(oath.isClauseFulfilled(0));
+        assertEquals(OathState.FULFILLED, oath.state());
     }
 
     @Test

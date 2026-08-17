@@ -5,6 +5,15 @@ import com.google.gmail.philbgarner.oathbound.altar.AltarDecaySweepService;
 import com.google.gmail.philbgarner.oathbound.altar.AltarRadiusCalculator;
 import com.google.gmail.philbgarner.oathbound.altar.AltarVulnerabilityTier;
 import com.google.gmail.philbgarner.oathbound.board.OathBoard;
+import com.google.gmail.philbgarner.oathbound.bounty.Banishment;
+import com.google.gmail.philbgarner.oathbound.bounty.BanishmentService;
+import com.google.gmail.philbgarner.oathbound.bounty.BanishmentSweepService;
+import com.google.gmail.philbgarner.oathbound.bounty.Bounty;
+import com.google.gmail.philbgarner.oathbound.bounty.BountyAbandonmentSweepService;
+import com.google.gmail.philbgarner.oathbound.bounty.BountyService;
+import com.google.gmail.philbgarner.oathbound.bounty.PveContractProgress;
+import com.google.gmail.philbgarner.oathbound.bounty.PveContractService;
+import com.google.gmail.philbgarner.oathbound.command.OathboundBountyCommand;
 import com.google.gmail.philbgarner.oathbound.command.OathboundDebugCommand;
 import com.google.gmail.philbgarner.oathbound.command.OathboundNotaryCommand;
 import com.google.gmail.philbgarner.oathbound.command.OathboundOathCommand;
@@ -21,6 +30,8 @@ import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroupRef;
 import com.google.gmail.philbgarner.oathbound.gui.AltarSacrificeGuiListener;
+import com.google.gmail.philbgarner.oathbound.gui.BountyBoardGuiListener;
+import com.google.gmail.philbgarner.oathbound.gui.BountyPlacementListener;
 import com.google.gmail.philbgarner.oathbound.gui.NotaryMenuGuiListener;
 import com.google.gmail.philbgarner.oathbound.gui.OathBoardGuiListener;
 import com.google.gmail.philbgarner.oathbound.gui.OathBuilderListener;
@@ -35,6 +46,11 @@ import com.google.gmail.philbgarner.oathbound.listener.AltarDesecrationListener;
 import com.google.gmail.philbgarner.oathbound.listener.AltarInteractListener;
 import com.google.gmail.philbgarner.oathbound.listener.AltarMonsterSpawnGuardListener;
 import com.google.gmail.philbgarner.oathbound.listener.AltarWarningListener;
+import com.google.gmail.philbgarner.oathbound.listener.BanishmentLoginListener;
+import com.google.gmail.philbgarner.oathbound.listener.BanishmentRespawnListener;
+import com.google.gmail.philbgarner.oathbound.listener.BountyKillListener;
+import com.google.gmail.philbgarner.oathbound.listener.BountyLoginNoticeListener;
+import com.google.gmail.philbgarner.oathbound.listener.PveKillListener;
 import com.google.gmail.philbgarner.oathbound.listener.ClaimBuildGuardListener;
 import com.google.gmail.philbgarner.oathbound.listener.DeathTrackingListener;
 import com.google.gmail.philbgarner.oathbound.listener.HonorLedgerListener;
@@ -70,6 +86,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -97,6 +114,12 @@ public final class OathboundPlugin extends JavaPlugin {
     private NegotiationExpiryService negotiationExpiryService;
     private AltarDecaySweepService altarDecaySweepService;
     private OathDraftPromptListener oathDraftPromptListener;
+    private BountyService bountyService;
+    private BanishmentService banishmentService;
+    private BanishmentSweepService banishmentSweepService;
+    private BountyAbandonmentSweepService bountyAbandonmentSweepService;
+    private BountyPlacementListener bountyPlacementListener;
+    private PveContractService pveContractService;
 
     private final Map<UUID, ProtectionGroup> groupCache = new ConcurrentHashMap<>();
     private final Map<UUID, Oath> oathCache = new ConcurrentHashMap<>();
@@ -107,6 +130,10 @@ public final class OathboundPlugin extends JavaPlugin {
     private final Map<UUID, Notary> notaryCache = new ConcurrentHashMap<>();
     private final Map<UUID, OathBoard> oathBoardCache = new ConcurrentHashMap<>();
     private final Map<UUID, VillagerNpc> villagerNpcCache = new ConcurrentHashMap<>();
+    private final Map<UUID, Bounty> bountyCache = new ConcurrentHashMap<>();
+    private final Map<UUID, Banishment> banishmentCache = new ConcurrentHashMap<>();
+    private final Map<UUID, PveContractProgress> pveContractProgressCache = new ConcurrentHashMap<>();
+    private final Set<UUID> bountyNotificationOptOuts = ConcurrentHashMap.newKeySet();
 
     @Override
     public void onEnable() {
@@ -166,6 +193,18 @@ public final class OathboundPlugin extends JavaPlugin {
         negotiationExpiryService = new NegotiationExpiryService();
         altarDecaySweepService = new AltarDecaySweepService();
         oathDraftPromptListener = new OathDraftPromptListener(this);
+        bountyService = new BountyService(economyService, id -> Optional.ofNullable(groupCache.get(id)),
+                bountyCache::values, oathCache::values,
+                oathboundConfig.bountyFeeBase(), oathboundConfig.bountyHeatFeeMultiplier(),
+                oathboundConfig.bountyHeatDecayWindow(), oathboundConfig.bountyMaxPlacementsPer24h(),
+                oathboundConfig.bountyBreachDiscountWindow(), oathboundConfig.bountyBreachDiscountFraction());
+        banishmentService = new BanishmentService(oathboundConfig.banishmentMinHours(),
+                oathboundConfig.banishmentMaxHours(), oathboundConfig.banishmentHoursPerCurrencyUnit(),
+                oathboundConfig.banishmentStackCapHours());
+        banishmentSweepService = new BanishmentSweepService();
+        bountyAbandonmentSweepService = new BountyAbandonmentSweepService();
+        bountyPlacementListener = new BountyPlacementListener(this);
+        pveContractService = new PveContractService(economyService);
 
         loadExistingState();
 
@@ -206,6 +245,13 @@ public final class OathboundPlugin extends JavaPlugin {
             }
         }
 
+        PluginCommand bountyCommand = getCommand("oathbound-bounty");
+        if (bountyCommand != null) {
+            OathboundBountyCommand executor = new OathboundBountyCommand(this);
+            bountyCommand.setExecutor(executor);
+            bountyCommand.setTabCompleter(executor);
+        }
+
         getServer().getPluginManager().registerEvents(new AltarConsecrationListener(this), this);
         getServer().getPluginManager().registerEvents(new AltarInteractListener(this), this);
         getServer().getPluginManager().registerEvents(new AltarDesecrationListener(this), this);
@@ -226,6 +272,13 @@ public final class OathboundPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new OathBoardGuiListener(this), this);
         getServer().getPluginManager().registerEvents(new VillagerNpcInteractListener(this), this);
         getServer().getPluginManager().registerEvents(new VillagerShopGuiListener(this), this);
+        getServer().getPluginManager().registerEvents(new BountyKillListener(this), this);
+        getServer().getPluginManager().registerEvents(new BountyBoardGuiListener(this), this);
+        getServer().getPluginManager().registerEvents(bountyPlacementListener, this);
+        getServer().getPluginManager().registerEvents(new BanishmentRespawnListener(this), this);
+        getServer().getPluginManager().registerEvents(new BanishmentLoginListener(this), this);
+        getServer().getPluginManager().registerEvents(new BountyLoginNoticeListener(this), this);
+        getServer().getPluginManager().registerEvents(new PveKillListener(this), this);
 
         getServer().getScheduler().runTaskTimer(this, this::runConditionEngineTick, 100L, 100L);
 
@@ -277,6 +330,71 @@ public final class OathboundPlugin extends JavaPlugin {
         } catch (RuntimeException e) {
             getLogger().log(Level.SEVERE, "Altar decay sweep failed", e);
         }
+        try {
+            List<Bounty> abandonedTouched = bountyAbandonmentSweepService.sweep(bountyCache.values(),
+                    id -> Optional.ofNullable(groupCache.get(id)), this::lastPlayed,
+                    oathboundConfig.bountyAbandonInactivityThreshold(), now, bountyService);
+            abandonedTouched.forEach(this::persistBountyAsync);
+        } catch (RuntimeException e) {
+            getLogger().log(Level.SEVERE, "Bounty abandonment sweep failed", e);
+        }
+        try {
+            List<Banishment> released = banishmentSweepService.sweep(banishmentCache.values(), now);
+            for (Banishment banishment : released) {
+                persistBanishmentAsync(banishment);
+                Player player = Bukkit.getPlayer(banishment.player().playerId());
+                if (player != null) {
+                    player.teleport(toBukkitLocation(banishment.returnLocation()));
+                    player.sendMessage("Your banishment has ended.");
+                }
+            }
+        } catch (RuntimeException e) {
+            getLogger().log(Level.SEVERE, "Banishment sweep failed", e);
+        }
+    }
+
+    /** Live inactivity lookup for {@link BountyAbandonmentSweepService} - injected as a Function exactly
+     * like {@link ConditionEngine}'s groupLookup seam, so the sweep service itself stays Bukkit-free and
+     * unit-testable with a fake. */
+    private Instant lastPlayed(UUID playerId) {
+        long lastPlayedMillis = Bukkit.getOfflinePlayer(playerId).getLastPlayed();
+        return lastPlayedMillis == 0L ? Instant.EPOCH : Instant.ofEpochMilli(lastPlayedMillis);
+    }
+
+    public org.bukkit.Location toBukkitLocation(com.google.gmail.philbgarner.oathbound.bounty.ReturnLocation location) {
+        org.bukkit.World world = Bukkit.getWorld(location.worldId());
+        if (world == null) {
+            world = getServer().getWorlds().get(0);
+        }
+        return new org.bukkit.Location(world, location.x(), location.y(), location.z(), location.yaw(), location.pitch());
+    }
+
+    /** Resolves the configured End banishment pen to a real Bukkit {@code Location} - the world is
+     * looked up by name at call time since {@code banishment.pen.world} is plain config, not a
+     * persisted {@code UUID worldId} (see {@code BanishmentPenSpec}'s own javadoc for why). Falls back to
+     * the server's first loaded world if the configured world isn't loaded, same fail-soft posture as
+     * {@link #toBukkitLocation}. */
+    public org.bukkit.Location banishmentPenLocation() {
+        com.google.gmail.philbgarner.oathbound.config.BanishmentPenSpec pen = oathboundConfig.banishmentPen();
+        org.bukkit.World world = Bukkit.getWorld(pen.worldName());
+        if (world == null) {
+            world = getServer().getWorlds().get(0);
+        }
+        return new org.bukkit.Location(world, pen.x(), pen.y(), pen.z(), pen.yaw(), pen.pitch());
+    }
+
+    /** Records a new fixed End-pen destination straight into {@code config.yml} on disk and reloads the
+     * live {@link OathboundConfig} - the `/oathbound-debug banishment set-pen` teleport-and-capture
+     * pattern, so an admin never hand-edits the coordinates. */
+    public void setBanishmentPenAndReload(org.bukkit.Location location) {
+        getConfig().set("banishment.pen.world", location.getWorld().getName());
+        getConfig().set("banishment.pen.x", location.getX());
+        getConfig().set("banishment.pen.y", location.getY());
+        getConfig().set("banishment.pen.z", location.getZ());
+        getConfig().set("banishment.pen.yaw", (double) location.getYaw());
+        getConfig().set("banishment.pen.pitch", (double) location.getPitch());
+        saveConfig();
+        oathboundConfig = OathboundConfig.load(getConfig(), getDataFolder().toPath());
     }
 
     private void notifyAltarOwnersIfOnline(Altar altar, AltarVulnerabilityTier tier) {
@@ -366,12 +484,23 @@ public final class OathboundPlugin extends JavaPlugin {
             for (VillagerNpc npc : dataStore.loadAllVillagerNpcs()) {
                 villagerNpcCache.put(npc.id(), npc);
             }
+            for (Bounty bounty : dataStore.loadAllBounties()) {
+                bountyCache.put(bounty.id(), bounty);
+            }
+            for (Banishment banishment : dataStore.loadAllBanishments()) {
+                banishmentCache.put(banishment.id(), banishment);
+            }
+            for (PveContractProgress progress : dataStore.loadAllPveContractProgress()) {
+                pveContractProgressCache.put(progress.id(), progress);
+            }
+            bountyNotificationOptOuts.addAll(dataStore.loadBountyNotificationOptOuts());
             getLogger().info("Loaded " + groupCache.size() + " group(s), " + oathCache.size() + " oath(s), "
                     + altarCache.size() + " altar(s), " + tradeOfferCache.size() + " trade offer(s), "
                     + deathRecordCount + " death record(s), " + escrowClaimCache.size() + " escrow claim(s), "
                     + protectionCache.size() + " protection(s), " + honorCount + " honor record(s), "
                     + notaryCache.size() + " notary/notaries, " + oathBoardCache.size() + " oath board(s), "
-                    + villagerNpcCache.size() + " villager shop NPC(s) from storage.");
+                    + villagerNpcCache.size() + " villager shop NPC(s), " + bountyCache.size() + " bounty/bounties, "
+                    + banishmentCache.size() + " banishment(s) from storage.");
         } catch (DataStoreException e) {
             getLogger().log(Level.SEVERE, "Failed to load persisted state", e);
         }
@@ -537,6 +666,56 @@ public final class OathboundPlugin extends JavaPlugin {
         });
     }
 
+    public void persistBountyAsync(Bounty bounty) {
+        persistenceExecutor.submit(() -> {
+            try {
+                dataStore.saveBounty(bounty);
+            } catch (DataStoreException e) {
+                getLogger().log(Level.SEVERE, "Failed to persist bounty " + bounty.id(), e);
+            }
+        });
+    }
+
+    public void deleteBountyAsync(UUID id) {
+        persistenceExecutor.submit(() -> {
+            try {
+                dataStore.deleteBounty(id);
+            } catch (DataStoreException e) {
+                getLogger().log(Level.SEVERE, "Failed to delete bounty " + id, e);
+            }
+        });
+    }
+
+    public void persistBanishmentAsync(Banishment banishment) {
+        persistenceExecutor.submit(() -> {
+            try {
+                dataStore.saveBanishment(banishment);
+            } catch (DataStoreException e) {
+                getLogger().log(Level.SEVERE, "Failed to persist banishment " + banishment.id(), e);
+            }
+        });
+    }
+
+    public void persistPveContractProgressAsync(PveContractProgress progress) {
+        persistenceExecutor.submit(() -> {
+            try {
+                dataStore.savePveContractProgress(progress);
+            } catch (DataStoreException e) {
+                getLogger().log(Level.SEVERE, "Failed to persist PvE contract progress " + progress.id(), e);
+            }
+        });
+    }
+
+    public void setBountyNotificationOptOutAsync(UUID playerId, boolean optedOut) {
+        persistenceExecutor.submit(() -> {
+            try {
+                dataStore.setBountyNotificationOptOut(playerId, optedOut);
+            } catch (DataStoreException e) {
+                getLogger().log(Level.SEVERE, "Failed to persist bounty notification opt-out for " + playerId, e);
+            }
+        });
+    }
+
     public OathboundConfig oathboundConfig() {
         return oathboundConfig;
     }
@@ -615,5 +794,37 @@ public final class OathboundPlugin extends JavaPlugin {
 
     public Map<UUID, VillagerNpc> villagerNpcCache() {
         return villagerNpcCache;
+    }
+
+    public Map<UUID, Bounty> bountyCache() {
+        return bountyCache;
+    }
+
+    public Map<UUID, Banishment> banishmentCache() {
+        return banishmentCache;
+    }
+
+    public Map<UUID, PveContractProgress> pveContractProgressCache() {
+        return pveContractProgressCache;
+    }
+
+    public Set<UUID> bountyNotificationOptOuts() {
+        return bountyNotificationOptOuts;
+    }
+
+    public BountyService bountyService() {
+        return bountyService;
+    }
+
+    public BanishmentService banishmentService() {
+        return banishmentService;
+    }
+
+    public BountyPlacementListener bountyPlacementListener() {
+        return bountyPlacementListener;
+    }
+
+    public PveContractService pveContractService() {
+        return pveContractService;
     }
 }

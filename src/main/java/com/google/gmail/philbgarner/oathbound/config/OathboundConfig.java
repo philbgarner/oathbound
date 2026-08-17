@@ -1,5 +1,6 @@
 package com.google.gmail.philbgarner.oathbound.config;
 
+import com.google.gmail.philbgarner.oathbound.bounty.PveContractDefinition;
 import com.google.gmail.philbgarner.oathbound.economy.Currency;
 import com.google.gmail.philbgarner.oathbound.group.GroupTier;
 import com.google.gmail.philbgarner.oathbound.honor.HonorTiers;
@@ -9,6 +10,7 @@ import com.google.gmail.philbgarner.oathbound.villager.VillagerTradeOffer;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.entity.EntityType;
 import org.bukkit.potion.PotionEffectType;
 
 import java.nio.file.Path;
@@ -64,6 +66,19 @@ public final class OathboundConfig {
     private final Material oathBoardMaterial;
     private final int oathBoardFeedSize;
     private final Map<NpcRole, VillagerRoleTrades> villagerTrades;
+    private final long bountyFeeBase;
+    private final double bountyHeatFeeMultiplier;
+    private final Duration bountyHeatDecayWindow;
+    private final int bountyMaxPlacementsPer24h;
+    private final Duration bountyBreachDiscountWindow;
+    private final double bountyBreachDiscountFraction;
+    private final Duration bountyAbandonInactivityThreshold;
+    private final long banishmentMinHours;
+    private final long banishmentMaxHours;
+    private final long banishmentHoursPerCurrencyUnit;
+    private final long banishmentStackCapHours;
+    private final BanishmentPenSpec banishmentPen;
+    private final List<PveContractDefinition> pveContracts;
 
     private OathboundConfig(Path sqliteFile, int resolverDepthCutoff, List<Currency> currencies,
                              Material altarCapstoneMaterial, double altarPowerRadiusScale,
@@ -79,7 +94,12 @@ public final class OathboundConfig {
                              Duration honorBloodOathBreachDebuffDuration, int honorBloodOathBreachDebuffAmplifier,
                              Material sealingTableMaterial, int notaryPendingOfferCap,
                              Duration notaryNegotiationExpiry, Material oathBoardMaterial, int oathBoardFeedSize,
-                             Map<NpcRole, VillagerRoleTrades> villagerTrades) {
+                             Map<NpcRole, VillagerRoleTrades> villagerTrades, long bountyFeeBase,
+                             double bountyHeatFeeMultiplier, Duration bountyHeatDecayWindow, int bountyMaxPlacementsPer24h,
+                             Duration bountyBreachDiscountWindow, double bountyBreachDiscountFraction,
+                             Duration bountyAbandonInactivityThreshold, long banishmentMinHours, long banishmentMaxHours,
+                             long banishmentHoursPerCurrencyUnit, long banishmentStackCapHours,
+                             BanishmentPenSpec banishmentPen, List<PveContractDefinition> pveContracts) {
         this.sqliteFile = sqliteFile;
         this.resolverDepthCutoff = resolverDepthCutoff;
         this.currencies = currencies;
@@ -111,6 +131,19 @@ public final class OathboundConfig {
         this.oathBoardMaterial = oathBoardMaterial;
         this.oathBoardFeedSize = oathBoardFeedSize;
         this.villagerTrades = villagerTrades;
+        this.bountyFeeBase = bountyFeeBase;
+        this.bountyHeatFeeMultiplier = bountyHeatFeeMultiplier;
+        this.bountyHeatDecayWindow = bountyHeatDecayWindow;
+        this.bountyMaxPlacementsPer24h = bountyMaxPlacementsPer24h;
+        this.bountyBreachDiscountWindow = bountyBreachDiscountWindow;
+        this.bountyBreachDiscountFraction = bountyBreachDiscountFraction;
+        this.bountyAbandonInactivityThreshold = bountyAbandonInactivityThreshold;
+        this.banishmentMinHours = banishmentMinHours;
+        this.banishmentMaxHours = banishmentMaxHours;
+        this.banishmentHoursPerCurrencyUnit = banishmentHoursPerCurrencyUnit;
+        this.banishmentStackCapHours = banishmentStackCapHours;
+        this.banishmentPen = banishmentPen;
+        this.pveContracts = pveContracts;
     }
 
     public static OathboundConfig load(FileConfiguration config, Path dataFolder) {
@@ -216,6 +249,28 @@ public final class OathboundConfig {
             villagerTrades.put(role, new VillagerRoleTrades(sells, buys));
         }
 
+        long bountyFeeBase = config.getLong("bounty.fee-base", 100L);
+        double bountyHeatFeeMultiplier = config.getDouble("bounty.heat-fee-multiplier", 0.5);
+        Duration bountyHeatDecayWindow = Duration.ofHours(config.getInt("bounty.heat-decay-hours", 72));
+        int bountyMaxPlacementsPer24h = config.getInt("bounty.max-placements-per-24h", 3);
+        Duration bountyBreachDiscountWindow = Duration.ofDays(config.getInt("bounty.breach-discount-window-days", 14));
+        double bountyBreachDiscountFraction = config.getDouble("bounty.breach-discount-fraction", 0.5);
+        Duration bountyAbandonInactivityThreshold = Duration.ofDays(config.getInt("bounty.abandon-inactivity-days", 30));
+
+        long banishmentMinHours = config.getLong("banishment.min-hours", 1L);
+        long banishmentMaxHours = config.getLong("banishment.max-hours", 72L);
+        long banishmentHoursPerCurrencyUnit = config.getLong("banishment.hours-per-currency-unit", 50L);
+        long banishmentStackCapHours = config.getLong("banishment.stack-cap-hours", 168L);
+        BanishmentPenSpec banishmentPen = new BanishmentPenSpec(
+                config.getString("banishment.pen.world", "world_the_end"),
+                config.getDouble("banishment.pen.x", 0.5),
+                config.getDouble("banishment.pen.y", 64.0),
+                config.getDouble("banishment.pen.z", 0.5),
+                (float) config.getDouble("banishment.pen.yaw", 0.0),
+                (float) config.getDouble("banishment.pen.pitch", 0.0));
+
+        List<PveContractDefinition> pveContracts = parsePveContracts(config.getMapList("pve-contracts"));
+
         return new OathboundConfig(dataFolder.resolve(sqliteFileName), depthCutoff, currencies,
                 capstoneMaterial, powerRadiusScale, Map.copyOf(tierMultipliers),
                 altarDecayDays, altarCriticalThreshold, altarDecayingThreshold, altarXpLootConversionRate,
@@ -224,7 +279,37 @@ public final class OathboundConfig {
                 lockToolMaterial, fulfillGainBase, breachLossBase, bloodOathMultiplier, minForBloodOath,
                 honorTiers, debuffEffect, debuffDuration, debuffAmplifier,
                 sealingTableMaterial, notaryPendingOfferCap, notaryNegotiationExpiry,
-                oathBoardMaterial, oathBoardFeedSize, Map.copyOf(villagerTrades));
+                oathBoardMaterial, oathBoardFeedSize, Map.copyOf(villagerTrades),
+                bountyFeeBase, bountyHeatFeeMultiplier, bountyHeatDecayWindow, bountyMaxPlacementsPer24h,
+                bountyBreachDiscountWindow, bountyBreachDiscountFraction, bountyAbandonInactivityThreshold,
+                banishmentMinHours, banishmentMaxHours, banishmentHoursPerCurrencyUnit, banishmentStackCapHours,
+                banishmentPen, pveContracts);
+    }
+
+    private static List<PveContractDefinition> parsePveContracts(List<Map<?, ?>> raw) {
+        List<PveContractDefinition> result = new ArrayList<>();
+        for (Map<?, ?> entry : raw) {
+            String id = String.valueOf(entry.get("id"));
+            String displayName = String.valueOf(entry.get("display-name"));
+            String mobName = String.valueOf(entry.get("mob"));
+            String mobTypeName;
+            try {
+                mobTypeName = EntityType.valueOf(mobName.toUpperCase()).name();
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("Unknown pve-contracts mob: " + mobName, e);
+            }
+            int quantity = ((Number) entry.get("quantity")).intValue();
+            Map<Currency, Long> reward = new java.util.HashMap<>();
+            Object rewardRaw = entry.get("reward");
+            if (rewardRaw instanceof Map<?, ?> rewardMap) {
+                for (Map.Entry<?, ?> rewardEntry : rewardMap.entrySet()) {
+                    reward.put(new Currency(String.valueOf(rewardEntry.getKey())),
+                            ((Number) rewardEntry.getValue()).longValue());
+                }
+            }
+            result.add(new PveContractDefinition(id, displayName, mobTypeName, quantity, reward));
+        }
+        return result;
     }
 
     private static List<VillagerTradeOffer> parseTradeOffers(List<Map<?, ?>> raw) {
@@ -363,5 +448,57 @@ public final class OathboundConfig {
 
     public Map<NpcRole, VillagerRoleTrades> villagerTrades() {
         return villagerTrades;
+    }
+
+    public long bountyFeeBase() {
+        return bountyFeeBase;
+    }
+
+    public double bountyHeatFeeMultiplier() {
+        return bountyHeatFeeMultiplier;
+    }
+
+    public Duration bountyHeatDecayWindow() {
+        return bountyHeatDecayWindow;
+    }
+
+    public int bountyMaxPlacementsPer24h() {
+        return bountyMaxPlacementsPer24h;
+    }
+
+    public Duration bountyBreachDiscountWindow() {
+        return bountyBreachDiscountWindow;
+    }
+
+    public double bountyBreachDiscountFraction() {
+        return bountyBreachDiscountFraction;
+    }
+
+    public Duration bountyAbandonInactivityThreshold() {
+        return bountyAbandonInactivityThreshold;
+    }
+
+    public long banishmentMinHours() {
+        return banishmentMinHours;
+    }
+
+    public long banishmentMaxHours() {
+        return banishmentMaxHours;
+    }
+
+    public long banishmentHoursPerCurrencyUnit() {
+        return banishmentHoursPerCurrencyUnit;
+    }
+
+    public long banishmentStackCapHours() {
+        return banishmentStackCapHours;
+    }
+
+    public BanishmentPenSpec banishmentPen() {
+        return banishmentPen;
+    }
+
+    public List<PveContractDefinition> pveContracts() {
+        return pveContracts;
     }
 }

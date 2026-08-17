@@ -109,6 +109,59 @@ oath-board:
   # how many postings can show - just how far back the live query looks.
   feed-size: 50
 
+bounty:
+  # Notary fee for placing a bounty, before heat-scaling - separate from the reward itself.
+  fee-base: 100
+  # Fee multiplier per point of "heat" (how many active/recent bounties already exist on the target) -
+  # fee = fee-base * (1 + heat * this). The first bounty on a target is cheap; stacking a fifth is not.
+  heat-fee-multiplier: 0.5
+  # Hours over which a bounty's contribution to a target's heat linearly decays to zero.
+  heat-decay-hours: 72
+  # Hard cap on bounties a single player can place in a rolling 24h window, independent of heat cost.
+  max-placements-per-24h: 3
+  # If the target broke an oath with the placer within this many days, the placer gets a fee discount -
+  # approximated as "any oath between the pair transitioned to BROKEN in this window," since the Ledger
+  # has no fault-attribution concept (same known limitation as the Honor system).
+  breach-discount-window-days: 14
+  # Fraction knocked off the fee when the discount above applies (0.5 = half price).
+  breach-discount-fraction: 0.5
+  # A group-bounty-targeted member counts as "abandoned" (auto-decrementing the contract's required
+  # quantity by one) once their last-played time exceeds this many days.
+  abandon-inactivity-days: 30
+
+banishment:
+  # Sentence length = bountyAmountPaid / this (hours), before the min/max clamp below.
+  hours-per-currency-unit: 50
+  min-hours: 1
+  max-hours: 72
+  # A subsequent qualifying bounty kill while already serving a sentence extends the remaining time
+  # (never resets it), but the total duration measured from when the sentence first began can never
+  # exceed this many hours - further stacking beyond the cap is absorbed.
+  stack-cap-hours: 168
+  # Fixed destination for the purpose-built End banishment pen - build it by hand (contained, safe from
+  # Endermen/void, basic survival amenities), then run /oathbound-debug banishment set-pen while standing
+  # at the release point to record these coordinates instead of editing them by hand.
+  pen:
+    world: world_the_end
+    x: 0.5
+    y: 64.0
+    z: 0.5
+    yaw: 0.0
+    pitch: 0.0
+
+# Standing, repeatable, admin-authored PvE kill contracts (an economy tap) - browsable from any Notary's
+# Bounty Board. Reward currency must be one of economy.currencies. Player progress against these is real
+# state and persists; the definitions themselves are just config and can be edited freely.
+pve-contracts: []
+# Example:
+# pve-contracts:
+#   - id: spider-cull
+#     display-name: "Spider Cull"
+#     mob: SPIDER
+#     quantity: 20
+#     reward:
+#       coin: 200
+
 villagers:
   # Each role's shop NPCs all share one fixed buy/sell list, edited here - not a per-instance builder.
   # 'sells' = the NPC sells to the player (player pays, receives the item).

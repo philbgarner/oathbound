@@ -10,6 +10,7 @@ public final class NotaryMenuHolder implements InventoryHolder {
 
     public static final int SIZE = 9;
     public static final int NEW_OATH_SLOT = 2;
+    public static final int BOUNTY_BOARD_SLOT = 3;
     public static final int PENDING_OATHS_SLOT = 4;
     public static final int CANCEL_SLOT = 6;
 

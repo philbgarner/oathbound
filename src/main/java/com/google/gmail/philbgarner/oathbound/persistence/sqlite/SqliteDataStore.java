@@ -2,6 +2,9 @@ package com.google.gmail.philbgarner.oathbound.persistence.sqlite;
 
 import com.google.gmail.philbgarner.oathbound.altar.Altar;
 import com.google.gmail.philbgarner.oathbound.board.OathBoard;
+import com.google.gmail.philbgarner.oathbound.bounty.Banishment;
+import com.google.gmail.philbgarner.oathbound.bounty.Bounty;
+import com.google.gmail.philbgarner.oathbound.bounty.PveContractProgress;
 import com.google.gmail.philbgarner.oathbound.contract.TradeOffer;
 import com.google.gmail.philbgarner.oathbound.economy.Currency;
 import com.google.gmail.philbgarner.oathbound.economy.PlayerBalance;
@@ -37,9 +40,11 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 public final class SqliteDataStore implements DataStore {
@@ -54,7 +59,8 @@ public final class SqliteDataStore implements DataStore {
             "db/migrations/0007_honor.sql",
             "db/migrations/0008_notaries.sql",
             "db/migrations/0009_oath_boards.sql",
-            "db/migrations/0010_villager_npcs.sql"
+            "db/migrations/0010_villager_npcs.sql",
+            "db/migrations/0011_bounty.sql"
     );
 
     private final Path databaseFile;
@@ -663,5 +669,152 @@ public final class SqliteDataStore implements DataStore {
         } catch (SQLException e) {
             throw new DataStoreException("Failed to delete villager npc " + id, e);
         }
+    }
+
+    @Override
+    public synchronized void saveBounty(Bounty bounty) throws DataStoreException {
+        String json = gson.toJson(bounty);
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "INSERT INTO bounties(id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data")) {
+            stmt.setString(1, bounty.id().toString());
+            stmt.setString(2, json);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to save bounty " + bounty.id(), e);
+        }
+    }
+
+    @Override
+    public synchronized List<Bounty> loadAllBounties() throws DataStoreException {
+        List<Bounty> result = new ArrayList<>();
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT data FROM bounties")) {
+            while (rs.next()) {
+                result.add(gson.fromJson(rs.getString(1), Bounty.class));
+            }
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to load all bounties", e);
+        }
+        return result;
+    }
+
+    @Override
+    public synchronized void deleteBounty(UUID id) throws DataStoreException {
+        try (PreparedStatement stmt = connection.prepareStatement("DELETE FROM bounties WHERE id = ?")) {
+            stmt.setString(1, id.toString());
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to delete bounty " + id, e);
+        }
+    }
+
+    @Override
+    public synchronized void savePveContractProgress(PveContractProgress progress) throws DataStoreException {
+        String json = gson.toJson(progress);
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "INSERT INTO pve_contract_progress(id, data) VALUES (?, ?) "
+                        + "ON CONFLICT(id) DO UPDATE SET data = excluded.data")) {
+            stmt.setString(1, progress.id().toString());
+            stmt.setString(2, json);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to save PvE contract progress " + progress.id(), e);
+        }
+    }
+
+    @Override
+    public synchronized List<PveContractProgress> loadAllPveContractProgress() throws DataStoreException {
+        List<PveContractProgress> result = new ArrayList<>();
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT data FROM pve_contract_progress")) {
+            while (rs.next()) {
+                result.add(gson.fromJson(rs.getString(1), PveContractProgress.class));
+            }
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to load all PvE contract progress", e);
+        }
+        return result;
+    }
+
+    @Override
+    public synchronized void deletePveContractProgress(UUID id) throws DataStoreException {
+        try (PreparedStatement stmt = connection.prepareStatement("DELETE FROM pve_contract_progress WHERE id = ?")) {
+            stmt.setString(1, id.toString());
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to delete PvE contract progress " + id, e);
+        }
+    }
+
+    @Override
+    public synchronized void saveBanishment(Banishment banishment) throws DataStoreException {
+        String json = gson.toJson(banishment);
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "INSERT INTO banishments(id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data")) {
+            stmt.setString(1, banishment.id().toString());
+            stmt.setString(2, json);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to save banishment " + banishment.id(), e);
+        }
+    }
+
+    @Override
+    public synchronized List<Banishment> loadAllBanishments() throws DataStoreException {
+        List<Banishment> result = new ArrayList<>();
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT data FROM banishments")) {
+            while (rs.next()) {
+                result.add(gson.fromJson(rs.getString(1), Banishment.class));
+            }
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to load all banishments", e);
+        }
+        return result;
+    }
+
+    @Override
+    public synchronized void deleteBanishment(UUID id) throws DataStoreException {
+        try (PreparedStatement stmt = connection.prepareStatement("DELETE FROM banishments WHERE id = ?")) {
+            stmt.setString(1, id.toString());
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to delete banishment " + id, e);
+        }
+    }
+
+    @Override
+    public synchronized void setBountyNotificationOptOut(UUID playerId, boolean optedOut) throws DataStoreException {
+        try {
+            if (optedOut) {
+                try (PreparedStatement stmt = connection.prepareStatement(
+                        "INSERT INTO bounty_notification_opt_outs(player_id) VALUES (?) ON CONFLICT(player_id) DO NOTHING")) {
+                    stmt.setString(1, playerId.toString());
+                    stmt.executeUpdate();
+                }
+            } else {
+                try (PreparedStatement stmt = connection.prepareStatement(
+                        "DELETE FROM bounty_notification_opt_outs WHERE player_id = ?")) {
+                    stmt.setString(1, playerId.toString());
+                    stmt.executeUpdate();
+                }
+            }
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to update bounty notification opt-out for " + playerId, e);
+        }
+    }
+
+    @Override
+    public synchronized Set<UUID> loadBountyNotificationOptOuts() throws DataStoreException {
+        Set<UUID> result = new HashSet<>();
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT player_id FROM bounty_notification_opt_outs")) {
+            while (rs.next()) {
+                result.add(UUID.fromString(rs.getString(1)));
+            }
+        } catch (SQLException e) {
+            throw new DataStoreException("Failed to load bounty notification opt-outs", e);
+        }
+        return result;
     }
 }

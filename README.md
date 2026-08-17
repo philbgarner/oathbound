@@ -61,17 +61,25 @@ to stand up.
   propose it. The named counterparty reviews and signs (or declines) it from their own pending-oaths
   board.
 - **Live condition-engine wiring** — a periodic engine watches every active oath and executes a
-  transfer or escrow clause's effect the moment its condition is actually met (death counts, elapsed
-  time, manual confirmation, or currency already escrowed), rather than just being able to evaluate
-  whether it *would* be met.
+  transfer or escrow clause's effect, or resolves a kill-count clause, the moment its condition is
+  actually met (death counts, elapsed time, manual confirmation, or currency already escrowed), rather
+  than just being able to evaluate whether it *would* be met.
 - **Virtualized Escrow** — items and currency staked as part of an oath are withdrawn from the depositor
   immediately; currency pays straight into the recipient's balance on release, items go into a claimable
   pool with a configurable expiry that returns them to the depositor if nobody claims them.
+- **Bounty / Kill Contracts** — place a PvP bounty on a player or every member of a group through the
+  Notary's Bounty Board; the fee scales with how "hot" the target already is and decays over time, with a
+  hard daily placement cap and a discount if they recently broke an oath with you. A qualifying kill force
+  drops a tagged head — turning it in at any Notary is the fulfillment action (no kill-attribution
+  tracking), paying per head for group contracts, and banishing the victim to a purpose-built End pen for
+  a duration scaled by the bounty paid, with stacking sentences capped at a configurable maximum. Standing,
+  repeatable, admin-authored PvE kill contracts share the same Bounty Board for a currency-driven mob-kill
+  economy tap.
 - **Everything persists** — SQLite-backed via a pluggable storage adapter, with an in-memory cache for
   fast permission checks and async writes so gameplay never blocks on disk I/O.
 
 See [`oathbound-master-plan.md`](./oathbound-master-plan.md) for the full design doc, including
-systems not built yet (elections, bounty contracts, and the full counter-offer negotiation chain).
+systems not built yet (elections and the full counter-offer negotiation chain).
 
 ---
 
@@ -192,6 +200,39 @@ unanswered past a configurable number of days. Recipients still only sign or dec
 pending-oath board — editable counter-offers (the master plan's full negotiation state machine) aren't
 implemented yet.
 
+### Bounty / Kill Contracts
+
+The Notary's hub gains a fourth button, the **Bounty Board**: browse every active bounty, cancel your
+own (refunds the unpaid remainder — the placement fee is a sunk cost), or place a new one. Placing a
+bounty types the target's player or group name in chat, a quantity if it's a group (capped at that
+group's current member count), and a total reward, then confirms a heat-scaled Notary fee before any
+currency moves. Heat is never stored — like Altar Power, it's recomputed live from every other
+active/recent bounty on the same target, decaying over a configurable window, so the first bounty on
+someone is cheap and stacking several gets expensive fast; a hard daily cap on placements applies
+independent of heat, and a discount kicks in if the target broke an oath with you recently (approximated
+as "any oath between you two went `BROKEN`" — the Ledger has no fault-attribution concept, same known
+limitation as Honor).
+
+Bounties are placed *unilaterally* — the target never consents — so they aren't `Oath`s: dying to a
+qualifying kill force-drops a tagged player head (native item, no kill-attribution needed) and starts a
+banishment sentence for the victim. **Turning the head in at any Notary is the fulfillment action** —
+whoever holds and returns it gets paid, not necessarily who landed the kill. Group contracts pay per head
+in even installments, the contract staying open until every head is turned in. Banishment teleports the
+victim to a fixed, admin-built End pen (`/oathbound-debug banishment set-pen` records the coordinates)
+for real-world hours scaled by the bounty amount just paid, clamped to a min/max; a subsequent qualifying
+kill while already serving extends the remaining time rather than resetting it, capped at a configurable
+maximum total. The pen holds the player even across logout/respawn until release, which auto-teleports
+them back to where they died — checked on a schedule and on login if it elapsed while offline.
+
+The same board also lists **standing PvE contracts** — admin-authored, repeatable kill-a-number-of-this-
+mob quests for currency, configured in `config.yml` rather than built per-instance. These use native
+Bukkit kill-attribution (unlike bounties) since there's no reason to avoid it for a server-owned economy
+tap, and pay out (then reset for the next batch) the moment the required kill count is reached.
+
+A one-time login notice tells a player they have a bounty on their head the first time they log in after
+it's placed (not every login); `/oathbound-bounty list [player]` is the always-available pull command,
+and `/oathbound-bounty notify off` opts out of the login notice entirely.
+
 ### Villager Shops
 
 Thirteen `/oathbound-<role>` commands (armorer, butcher, cartographer, cleric, farmer, fisherman,
@@ -218,8 +259,8 @@ board is opened, the same pattern every other board-style GUI in this plugin alr
 ### Persistence
 
 All state — oaths, groups, ledger entries, balances, altars, trade offers, death records, escrow claims,
-protections, Honor, notaries, oath boards, villager shop NPCs — is stored via a
-`DataStore` adapter interface. The only implementation today is SQLite (embedded, file-based, bundled
+protections, Honor, notaries, oath boards, villager shop NPCs, bounties, banishments, PvE contract
+progress — is stored via a `DataStore` adapter interface. The only implementation today is SQLite (embedded, file-based, bundled
 inside the plugin jar — there is nothing separate to install or run). The interface is adapter-based
 specifically so a flat-file/YAML backend can be added later without touching any calling code.
 
@@ -248,9 +289,20 @@ specifically so a flat-file/YAML backend can be added later without touching any
 /oathbound-notary install <name...>   # spawn a rooted, invulnerable Notary Villager at your location
 ```
 
-Right-click an installed Notary to open its menu (start a new named-party oath draft, or review oaths
-proposed to you), or right-click the configured Sealing Table block (a lectern by default) for a
-face-to-face shortcut straight to the draft prompt.
+Right-click an installed Notary to open its menu (start a new named-party oath draft, review oaths
+proposed to you, or open the Bounty Board), or right-click the configured Sealing Table block (a lectern
+by default) for a face-to-face shortcut straight to the draft prompt.
+
+### Bounty / Kill Contracts (in-game GUI + commands)
+
+```
+/oathbound-bounty list [playerName]   # show active bounties on you (or another player)
+/oathbound-bounty notify <on|off>     # toggle the one-time login notice
+```
+
+Placement itself has no command — open the Bounty Board from any Notary, click "Place New Bounty," and
+follow the chat prompts (target, quantity if a group, reward) through to the fee-preview confirm screen.
+Fulfillment is just holding a tagged head and right-clicking any Notary.
 
 ### Villager Shops (in-game)
 
@@ -312,6 +364,16 @@ debug command surface lets you exercise it directly. Commands require a player, 
 /oathbound-debug villager list
 /oathbound-debug villager info <villagerNpcId>
 /oathbound-debug villager remove <villagerNpcId>
+
+/oathbound-debug bounty list [player]
+/oathbound-debug bounty info <bountyId>
+/oathbound-debug bounty cancel <bountyId>
+/oathbound-debug bounty heat <player>            # preview the current heat-scaled fee for a target
+
+/oathbound-debug banishment list
+/oathbound-debug banishment info <player>
+/oathbound-debug banishment release <player>     # admin override, releases + teleports back immediately
+/oathbound-debug banishment set-pen              # records your current location as the End pen destination
 ```
 
 `tier` is one of `INDIVIDUAL`, `COMPANY`, `TOWN`, `REGION`, `KINGDOM`. Tab completion works for
@@ -449,6 +511,39 @@ notary:
 oath-board:
   material: OAK_SIGN
   feed-size: 50
+
+bounty:
+  fee-base: 100
+  heat-fee-multiplier: 0.5
+  heat-decay-hours: 72
+  max-placements-per-24h: 3
+  breach-discount-window-days: 14
+  breach-discount-fraction: 0.5
+  abandon-inactivity-days: 30
+
+banishment:
+  hours-per-currency-unit: 50
+  min-hours: 1
+  max-hours: 72
+  stack-cap-hours: 168
+  # Fixed End-pen destination - build the pen by hand, then run
+  # /oathbound-debug banishment set-pen at the release point instead of editing these by hand.
+  pen:
+    world: world_the_end
+    x: 0.5
+    y: 64.0
+    z: 0.5
+    yaw: 0.0
+    pitch: 0.0
+
+# Standing, repeatable, admin-authored PvE kill contracts - empty by default.
+# pve-contracts:
+#   - id: spider-cull
+#     display-name: "Spider Cull"
+#     mob: SPIDER
+#     quantity: 20
+#     reward:
+#       coin: 200
 
 villagers:
   # Each role's shop NPCs all share one fixed buy/sell list, edited here - not a per-instance builder.
@@ -594,8 +689,34 @@ Tracking against the [master design plan](./oathbound-master-plan.md)'s build or
       per-instance builder) backed by an admin-edited list of items and prices per role in `config.yml`;
       transactions go through the existing `EconomyService`, the same native currency the rest of the
       plugin uses.
-- [ ] Bounty / Kill Contracts — quantity/group targeting, head-return fulfillment, heat-scaling fees,
-      banishment, and the condition-engine hookup for `KillCountClause` itself
+- [x] Bounty / Kill Contracts — the condition-engine hookup for `KillCountClause` itself first: an
+      Oath's kill-count clause resolves once `DeathTracker` confirms the required death count for its
+      target, the same machinery `Condition.DeathCount` already provided, since resolving its condition
+      *is* fulfilling it (no execution side effect of its own, unlike Transfer/Escrow). Bounties
+      themselves are deliberately **not** built on `Oath`/`ConditionEngine` - a new `bounty` package with
+      its own `BountyService`/`BanishmentService` instead, since a bounty's victim never consents
+      (Oaths require a PROPOSED→SEALED handshake), its reward recipient is whoever turns a head in rather
+      than a party named at draft time, and per-head installment payout is fundamentally incremental,
+      which `ConditionEngine`'s release-schedule model deliberately doesn't support. A Notary's hub gains
+      a Bounty Board: quantity/group targeting (validated against current member count, capped there),
+      heat-scaling Notary fees (live-computed like Altar Power, never persisted, decaying over a
+      configurable window) with a hard 24h placement cap and a breach discount (approximated as "any
+      oath between the pair went `BROKEN` recently," since the Ledger has no fault-attribution concept -
+      same known limitation as Honor), and head-return fulfillment (a qualifying kill force-drops a
+      tagged `PLAYER_HEAD`; turning it in at any Notary pays out, per-head for group contracts, with no
+      kill-attribution tracking at all). A qualifying kill also starts or extends (never resets) a
+      banishment sentence to a fixed, admin-built End pen (`/oathbound-debug banishment set-pen`),
+      real-hours scaled by the bounty amount just paid and clamped to a min/max, stacking capped at a
+      configurable maximum total duration; the pen holds the player across logout, and release
+      auto-teleports them back to where they died, checked on a periodic sweep and on login for sentences
+      that elapsed while offline. A group bounty's required quantity auto-decrements when a targeted
+      member is flagged abandoned via a live `OfflinePlayer.getLastPlayed()` inactivity check (no new
+      persisted flag). The same board also lists standing, repeatable, admin-authored **PvE contracts**
+      (`config.yml`'s `pve-contracts`, not persisted - only per-player progress is) using native Bukkit
+      kill-attribution instead, since there's no bounty-style attribution problem to sidestep for a
+      server-owned economy tap. A one-time login notice (not every-login spam) tells a player they have a
+      bounty on their head; `/oathbound-bounty list [player]` is the always-available pull command, and
+      `/oathbound-bounty notify off` opts out of the notice.
 - [ ] Polish pass: particle/sound effects, Notary flavor/skin system, full config-surface tuning
 
 ### Deliberately deferred (see master plan)
@@ -622,7 +743,7 @@ Tracking against the [master design plan](./oathbound-master-plan.md)'s build or
 ./gradlew runServer      # boot a local Paper test server with the plugin installed
 ```
 
-The domain layer (`oath`, `group`, `economy`, `altar`, `contract` packages) has zero Bukkit
+The domain layer (`oath`, `group`, `economy`, `altar`, `contract`, `bounty` packages) has zero Bukkit
 dependencies by design — it's plain, JUnit-testable Java. Bukkit-specific glue (commands, event
 listeners, inventory GUIs, item (de)serialization) lives in its own packages (`command`, `listener`,
 `gui`, `bukkit`) on top of that domain layer.

@@ -6,6 +6,11 @@ import com.google.gmail.philbgarner.oathbound.altar.AltarRadiusCalculator;
 import com.google.gmail.philbgarner.oathbound.altar.AltarVulnerability;
 import com.google.gmail.philbgarner.oathbound.altar.AltarVulnerabilityTier;
 import com.google.gmail.philbgarner.oathbound.board.OathBoard;
+import com.google.gmail.philbgarner.oathbound.bounty.Banishment;
+import com.google.gmail.philbgarner.oathbound.bounty.Bounty;
+import com.google.gmail.philbgarner.oathbound.bounty.BountyTarget;
+import com.google.gmail.philbgarner.oathbound.bounty.BountyTargeting;
+import com.google.gmail.philbgarner.oathbound.bounty.HeatCalculator;
 import com.google.gmail.philbgarner.oathbound.economy.EconomyService;
 import com.google.gmail.philbgarner.oathbound.group.EntityRef;
 import com.google.gmail.philbgarner.oathbound.group.GroupPermission;
@@ -45,7 +50,7 @@ import java.util.stream.Collectors;
 public final class OathboundDebugCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> TOP_LEVEL =
-            List.of("group", "oath", "ledger", "altar", "honor", "notary", "board", "villager");
+            List.of("group", "oath", "ledger", "altar", "honor", "notary", "board", "villager", "bounty", "banishment");
     private static final List<String> GROUP_SUB = List.of("create", "transfer", "info", "list");
     private static final List<String> OATH_SUB = List.of("create", "addflag", "confirm", "propose", "seal",
             "activate", "fulfill", "breach", "void", "info", "list");
@@ -54,6 +59,8 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
     private static final List<String> NOTARY_SUB = List.of("list", "info", "remove");
     private static final List<String> BOARD_SUB = List.of("list", "info", "remove");
     private static final List<String> VILLAGER_SUB = List.of("list", "info", "remove");
+    private static final List<String> BOUNTY_SUB = List.of("list", "info", "cancel", "heat");
+    private static final List<String> BANISHMENT_SUB = List.of("list", "info", "release", "set-pen");
 
     private final OathboundPlugin plugin;
 
@@ -81,6 +88,8 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
                 case "notary" -> handleNotary(player, args);
                 case "board" -> handleBoard(player, args);
                 case "villager" -> handleVillager(player, args);
+                case "bounty" -> handleBounty(player, args);
+                case "banishment" -> handleBanishment(player, args);
                 default -> sender.sendMessage("Unknown top-level command: " + args[0]);
             }
         } catch (OathTransitionException e) {
@@ -609,6 +618,154 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
         sender.sendMessage("Removed villager shop NPC '" + n.name() + "'.");
     }
 
+    // ---- bounty ----
+
+    private void handleBounty(Player sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage("Usage: /oathbound-debug bounty <list|info|cancel|heat> ...");
+            return;
+        }
+        switch (args[1].toLowerCase()) {
+            case "list" -> bountyList(sender, args);
+            case "info" -> bountyInfo(sender, args);
+            case "cancel" -> bountyCancel(sender, args);
+            case "heat" -> bountyHeat(sender, args);
+            default -> sender.sendMessage("Unknown bounty subcommand: " + args[1]);
+        }
+    }
+
+    private void bountyList(Player sender, String[] args) {
+        if (plugin.bountyCache().isEmpty()) {
+            sender.sendMessage("No bounties.");
+            return;
+        }
+        Optional<PlayerRef> filterTarget = args.length >= 3
+                ? Optional.of(new PlayerRef(Bukkit.getOfflinePlayer(args[2]).getUniqueId()))
+                : Optional.empty();
+        for (Bounty bounty : plugin.bountyCache().values()) {
+            if (filterTarget.isPresent() && !BountyTargeting.matches(bounty.target(), filterTarget.get(),
+                    id -> Optional.ofNullable(plugin.groupCache().get(id)))) {
+                continue;
+            }
+            sender.sendMessage(bounty.id() + " placer=" + bounty.placer() + " target=" + bounty.target()
+                    + " status=" + bounty.status() + " " + bounty.remainingQuantity() + "/" + bounty.originalQuantity());
+        }
+    }
+
+    private void bountyInfo(Player sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("Usage: /oathbound-debug bounty info <bountyId>");
+            return;
+        }
+        Optional<Bounty> bounty = findBounty(args[2]);
+        if (bounty.isEmpty()) {
+            sender.sendMessage("No such bounty: " + args[2]);
+            return;
+        }
+        Bounty b = bounty.get();
+        sender.sendMessage("Bounty " + b.id() + " status=" + b.status() + " placer=" + b.placer());
+        sender.sendMessage("  target=" + b.target() + " " + b.remainingQuantity() + "/" + b.originalQuantity() + " remaining");
+        sender.sendMessage("  reward=" + b.totalReward() + " feePaid=" + b.feePaid() + " placedAt=" + b.placedAt());
+    }
+
+    private void bountyCancel(Player sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("Usage: /oathbound-debug bounty cancel <bountyId>");
+            return;
+        }
+        Optional<Bounty> bounty = findBounty(args[2]);
+        if (bounty.isEmpty()) {
+            sender.sendMessage("No such bounty: " + args[2]);
+            return;
+        }
+        plugin.bountyService().cancel(bounty.get());
+        plugin.persistBountyAsync(bounty.get());
+        sender.sendMessage("Cancelled bounty " + bounty.get().id() + " and refunded the unpaid remainder.");
+    }
+
+    private void bountyHeat(Player sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("Usage: /oathbound-debug bounty heat <player>");
+            return;
+        }
+        PlayerRef targetRef = new PlayerRef(Bukkit.getOfflinePlayer(args[2]).getUniqueId());
+        BountyTarget target = new BountyTarget.Solo(targetRef);
+        double heat = HeatCalculator.heatOf(target, plugin.bountyCache().values(),
+                id -> Optional.ofNullable(plugin.groupCache().get(id)), Instant.now(), plugin.oathboundConfig().bountyHeatDecayWindow());
+        long fee = HeatCalculator.feeFor(heat, plugin.oathboundConfig().bountyFeeBase(),
+                plugin.oathboundConfig().bountyHeatFeeMultiplier());
+        sender.sendMessage(args[2] + " current heat=" + heat + ", next placement fee (before any discount)=" + fee);
+    }
+
+    // ---- banishment ----
+
+    private void handleBanishment(Player sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage("Usage: /oathbound-debug banishment <list|info|release|set-pen> ...");
+            return;
+        }
+        switch (args[1].toLowerCase()) {
+            case "list" -> banishmentList(sender);
+            case "info" -> banishmentInfo(sender, args);
+            case "release" -> banishmentRelease(sender, args);
+            case "set-pen" -> banishmentSetPen(sender);
+            default -> sender.sendMessage("Unknown banishment subcommand: " + args[1]);
+        }
+    }
+
+    private void banishmentList(Player sender) {
+        if (plugin.banishmentCache().isEmpty()) {
+            sender.sendMessage("No banishments.");
+            return;
+        }
+        for (Banishment banishment : plugin.banishmentCache().values()) {
+            sender.sendMessage(banishment.id() + " player=" + banishment.player() + " released=" + banishment.released()
+                    + " releaseAt=" + banishment.releaseAt());
+        }
+    }
+
+    private void banishmentInfo(Player sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("Usage: /oathbound-debug banishment info <player>");
+            return;
+        }
+        Optional<Banishment> banishment = findBanishmentForPlayer(args[2]);
+        if (banishment.isEmpty()) {
+            sender.sendMessage(args[2] + " has no banishment record.");
+            return;
+        }
+        Banishment b = banishment.get();
+        sender.sendMessage("Banishment " + b.id() + " player=" + args[2] + " released=" + b.released());
+        sender.sendMessage("  servingSince=" + b.servingSince() + " releaseAt=" + b.releaseAt()
+                + " triggeringBounty=" + b.triggeringBountyId());
+    }
+
+    private void banishmentRelease(Player sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("Usage: /oathbound-debug banishment release <player>");
+            return;
+        }
+        Optional<Banishment> banishment = findBanishmentForPlayer(args[2]);
+        if (banishment.isEmpty()) {
+            sender.sendMessage(args[2] + " has no banishment record.");
+            return;
+        }
+        Banishment b = banishment.get();
+        plugin.banishmentService().forceRelease(b);
+        plugin.persistBanishmentAsync(b);
+        Player onlineTarget = Bukkit.getPlayer(b.player().playerId());
+        if (onlineTarget != null) {
+            onlineTarget.teleport(plugin.toBukkitLocation(b.returnLocation()));
+            onlineTarget.sendMessage("An admin has released you from banishment.");
+        }
+        sender.sendMessage("Released " + args[2] + " from banishment.");
+    }
+
+    private void banishmentSetPen(Player sender) {
+        plugin.setBanishmentPenAndReload(sender.getLocation());
+        sender.sendMessage("Banishment pen set to your current location and saved to config.yml.");
+    }
+
     // ---- lookups ----
 
     private Optional<Altar> findAltar(String idString) {
@@ -659,6 +816,21 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
         }
     }
 
+    private Optional<Bounty> findBounty(String idString) {
+        try {
+            return Optional.ofNullable(plugin.bountyCache().get(UUID.fromString(idString)));
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
+        }
+    }
+
+    private Optional<Banishment> findBanishmentForPlayer(String playerName) {
+        PlayerRef playerRef = new PlayerRef(Bukkit.getOfflinePlayer(playerName).getUniqueId());
+        return plugin.banishmentCache().values().stream()
+                .filter(banishment -> banishment.player().equals(playerRef))
+                .findFirst();
+    }
+
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
@@ -673,6 +845,8 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
                 case "notary" -> filter(NOTARY_SUB, args[1]);
                 case "board" -> filter(BOARD_SUB, args[1]);
                 case "villager" -> filter(VILLAGER_SUB, args[1]);
+                case "bounty" -> filter(BOUNTY_SUB, args[1]);
+                case "banishment" -> filter(BANISHMENT_SUB, args[1]);
                 default -> new ArrayList<>();
             };
         }

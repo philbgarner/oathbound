@@ -17,6 +17,9 @@ commands:
   oathbound-notary:
     description: Install a Notary NPC at your current location.
     usage: /<command> install <name...>
+  oathbound-bounty:
+    description: List active bounties on a player, or toggle the login notice.
+    usage: /<command> [list [playerName]|notify <on|off>]
   oathbound-armorer:
     description: Install an Armorer shop NPC at your current location.
     usage: /<command> install <name...>

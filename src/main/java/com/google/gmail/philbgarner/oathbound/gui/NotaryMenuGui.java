@@ -23,6 +23,8 @@ public final class NotaryMenuGui {
         }
         inventory.setItem(NotaryMenuHolder.NEW_OATH_SLOT, GuiItems.button(Material.WRITABLE_BOOK, "New Oath",
                 "Draft a named-party oath", "with someone you name in chat."));
+        inventory.setItem(NotaryMenuHolder.BOUNTY_BOARD_SLOT, GuiItems.button(Material.PLAYER_HEAD, "Bounty Board",
+                "Browse active bounties,", "place a new one, or view", "standing kill contracts."));
         inventory.setItem(NotaryMenuHolder.PENDING_OATHS_SLOT, GuiItems.button(Material.BOOK, "Pending Oaths",
                 "Review oaths proposed to you,", "wherever they were sent from."));
         inventory.setItem(NotaryMenuHolder.CANCEL_SLOT, GuiItems.button(Material.BARRIER, "Cancel"));

@@ -33,6 +33,9 @@ public final class NotaryMenuGuiListener implements Listener {
         if (rawSlot == NotaryMenuHolder.NEW_OATH_SLOT) {
             player.closeInventory();
             plugin.oathDraftPromptListener().beginPrompt(player);
+        } else if (rawSlot == NotaryMenuHolder.BOUNTY_BOARD_SLOT) {
+            player.closeInventory();
+            BountyBoardGui.open(plugin, player);
         } else if (rawSlot == NotaryMenuHolder.PENDING_OATHS_SLOT) {
             player.closeInventory();
             PendingOathBoardGui.open(plugin, player);
