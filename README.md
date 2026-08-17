@@ -19,8 +19,33 @@ to stand up.
 
 ---
 
+## What Is It?
+
+A few moments this looks like in practice:
+
+- **A trade nobody has to trust.** Two players who've never met agree to swap a diamond pickaxe for a
+  stack of blaze rods. Neither wants to go first. Instead, each deposits their side into a chest-GUI
+  trade contract - the plugin holds both, swaps them the instant the second deposit lands, and queues
+  delivery safely even if someone's offline when it clears. No middleman, no risk of a ninja logout.
+- **A marriage alliance, sealed and witnessed.** Two rival Houses swear a Blood Oath at the Notary to
+  cement a truce, with the whole court named as witnesses. It posts to the Public Oath Board the moment
+  it's sealed - and if either side breaks it later, that breach posts too, broadcasts server-wide, and
+  costs the breaker real Honor plus a temporary curse. Reputation stops being a roleplay conceit and
+  starts being a ledger anyone can check.
+- **A border fort that can actually fall.** A frontier kingdom raises an altar and feeds it enchanted
+  gear to keep its claim radius wide enough to matter. Let sacrifices lapse, though, and Power decays -
+  drop below Critical and the altar's protection collapses, leaving its barrel open to being looted or
+  destroyed outright by whoever gets there first. Territory has to be maintained, not just claimed once.
+- **A price on a serial oath-breaker's head.** Tired of a rival who keeps breaking deals, a player posts
+  a bounty on them at the Notary board. Anyone who lands the qualifying kill turns in the dropped head
+  for the payout, and the target does real time in a purpose-built prison before they're teleported back
+  to where they died.
+
+---
+
 ## Table of Contents
 
+- [What Is It?](#what-is-it)
 - [Features](#features)
 - [How It Works](#how-it-works)
 - [Commands](#commands)
