@@ -41,6 +41,12 @@ altar:
   # At or below this live Power (but above critical-threshold), an altar is Decaying: still fully
   # protected, but the owner gets a login warning.
   decaying-threshold: 100
+  # Power a freshly-consecrated altar starts with - a one-time grace baseline, not a real sacrifice
+  # (it decays on the normal clock like any other Power, and can't be Looted for XP). Default is
+  # comfortably above decaying-threshold so a brand-new altar reads Normal, not Critical, from the
+  # moment it's placed - a new owner has a real window to sacrifice something before protection lapses.
+  # Set to 0 to restore the old zero-grace behavior.
+  starting-power: 150
   # XP orbs dropped when looting a Critical altar's barrel = this * the value of the most recent
   # completed sacrifice (not lifetime total).
   xp-loot-conversion-rate: 1.0
@@ -48,11 +54,22 @@ altar:
   # reconsecration) before protection re-engages, even if Power already reads as sufficient.
   reconsecration-cooldown-seconds: 300
   # Sacrifice valuation: an enchantment's base weight = this scale divided by its max level, so maxing
-  # out any single enchantment is worth the same regardless of item type or how many levels it has.
+  # out any single enchantment is worth the same as maxing out any other enchantment OF THE SAME
+  # RARITY, regardless of item type or how many levels it has - see enchantment-rarity-multiplier below
+  # for how rarity then scales that ceiling further.
   enchantment-weight-scale: 10.0
   # Each repeated occurrence of the same enchantment type within one sacrifice batch is multiplied by
   # this factor (compounding), to discourage volume-stuffing many low-value items in one deposit.
   repeat-enchantment-decay: 0.5
+  # Multiplies an enchantment's normalized weight by how significant Bukkit itself considers it
+  # (Enchantment.getRarity()) - a maxed-out enchantment is worth enchantment-weight-scale * this
+  # multiplier, so a rare/powerful enchantment is worth more than a common one even when both are
+  # equally "maxed out" by the level-normalization above. Keys are COMMON/UNCOMMON/RARE/VERY_RARE.
+  enchantment-rarity-multiplier:
+    COMMON: 1.0
+    UNCOMMON: 1.5
+    RARE: 2.5
+    VERY_RARE: 4.0
   # Honor penalty applied to whoever destroys a Critical altar's barrel (a Desecration).
   desecration-honor-penalty: 50
   # Honor penalty applied to whoever loots (rather than destroys) a Critical altar's barrel. Zero by
@@ -171,7 +188,28 @@ pve-contracts: []
 # right-clicked onto an already-placed pressure plate or push/lever button to bind the ceremony there -
 # any player who steps on/presses it afterwards is prompted as if the binder had right-clicked them, and
 # the binder doesn't need to be online for the trigger to fire (only to seal it via chat afterwards).
-ceremony-templates: []
+#
+# Ships with one live default, 'welcome-pact': a zero-mechanical-stakes onboarding pledge (no transfer,
+# tribute, escrow, or diplomacy clause - just an RP-only custom flag) safe to hand to a new player via
+# /oathbound-debug ceremony give welcome-pact <groupId> [player] without reviewing it first. Delete or
+# edit it like any other entry; the commented-out 'fealty' example below shows a template with real
+# stakes for admins who want more.
+ceremony-templates:
+  - id: welcome-pact
+    display-name: "Welcome Pact"
+    item-material: PAPER
+    item-display-name: "Charter of Welcome"
+    dialogue:
+      - "{initiator} offers you a place among these lands, {target}."
+      - "Swear only to keep the peace here - nothing more is asked of you."
+      - "Do you accept?"
+    confirm-phrases: ["i do", "yes", "i accept"]
+    decline-phrases: ["no", "i decline"]
+    prompt-timeout-seconds: 60
+    blood-oath: false
+    clauses:
+      - type: custom-flag
+        text: "Keep the peace of this land."
 
 # Whether ceremony items can be bound to pressure plates/buttons at all (see above). Doesn't affect the
 # existing right-click-a-player flow.

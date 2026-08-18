@@ -195,16 +195,23 @@ economy.
 An altar starts as three blocks stacked directly on top of each other: a **barrel**, a **capstone
 block** (obsidian by default — configurable), and a **candle**. Placing the candle is the trigger:
 Oathbound checks what's directly below it, and if the structure is right, the altar is consecrated on
-the spot, owned by whoever placed the candle, at **zero Power**, provided the location doesn't fall
-inside another altar's claim of the same or smaller `GroupTier` (nesting inside a strictly larger one -
-federating under a liege - is allowed). Its claim radius is computed live from current Power — at zero
-Power, that's zero radius.
+the spot, owned by whoever placed the candle, at a **configurable starting Power** (default 150 - a
+one-time grace baseline, not counted as a real sacrifice, comfortably above the Decaying threshold so a
+brand-new altar is fully protected from the moment it exists rather than reading Critical before its
+owner has had a chance to sacrifice anything; set to 0 to restore the old zero-grace behavior),
+provided the location doesn't fall inside another altar's claim of the same or smaller `GroupTier`
+(nesting inside a strictly larger one - federating under a liege - is allowed). Its claim radius is
+computed live from current Power.
 
 Right-clicking the barrel opens a chest-GUI **sacrifice interface**: deposit enchanted items (item type
 doesn't matter, only the enchantment profile does) and confirm to consume them permanently and add to
-Power. Power is never stored as a raw number — like radius, it's recomputed live from the last
-sacrifice's total and a configurable "days full-to-empty" decay rate, so it visibly drains if the altar
-isn't maintained. Three vulnerability tiers gate everything else: **Normal** and **Decaying** (a
+Power. An enchantment's contribution is normalized by its own max level (so maxing out any enchantment
+is worth the same base amount) and then scaled by a configurable rarity multiplier keyed to Minecraft's
+own COMMON/UNCOMMON/RARE/VERY_RARE selection-weight bands, so a rare, powerful enchantment is worth
+more than a common one even when both are equally "maxed out." Power is never stored as a raw number —
+like radius, it's recomputed live from the last sacrifice's total and a configurable "days full-to-empty"
+decay rate, so it visibly drains if the altar isn't maintained. Three vulnerability tiers gate
+everything else: **Normal** and **Decaying** (a
 configurable warning threshold triggers a login nudge to the owner) both keep full protection; only
 **Critical** (Power at or below a small configurable threshold) drops protection to zero and makes the
 barrel interactable for an outcome — **Destroy** it (a Desecration: Honor penalty for the breaker, a
@@ -508,6 +515,18 @@ altar:
     TOWN: 1.5
     REGION: 2.0
     KINGDOM: 3.0
+  # Power a freshly-consecrated altar starts with - a one-time grace baseline (not a real sacrifice),
+  # comfortably above decaying-threshold so a new altar is Normal, not Critical, from the moment it's
+  # placed. Set to 0 for the old zero-grace behavior.
+  starting-power: 150
+  # Multiplies an enchantment's normalized sacrifice weight by Minecraft's own COMMON/UNCOMMON/RARE/
+  # VERY_RARE selection-weight rarity - a maxed-out rare enchantment is worth more than a maxed-out
+  # common one, not just "worth the same for being maxed."
+  enchantment-rarity-multiplier:
+    COMMON: 1.0
+    UNCOMMON: 1.5
+    RARE: 2.5
+    VERY_RARE: 4.0
 
 protection:
   # Item that must be held to lock/unlock a chest or door - right-click the block while holding
@@ -649,7 +668,8 @@ Tracking against the [master design plan](./oathbound-master-plan.md)'s build or
       fault-attribution concept yet, so Honor/debuff effects apply to every party of the oath, not just
       whoever actually broke it - and `BROKEN` is still only reachable via the debug command (no
       automated "unmet deadline" detection exists). Both should narrow once a real breach-detection/
-      reporting flow is built.
+      reporting flow is built; a first step - fault-tagging on manually-declared breaches - is fully
+      researched and parked in [`fault-attribution-plan.md`](./fault-attribution-plan.md).
 - [x] NPC Notary (rooted villager) + Sealing Table, and a lighter-weight async negotiation mailbox —
       `/oathbound-notary install <name>` spawns a rooted, invulnerable Villager; right-clicking it opens
       a small hub GUI to start a new named-party oath draft (type the counterparty's name in chat) or
@@ -679,10 +699,20 @@ Tracking against the [master design plan](./oathbound-master-plan.md)'s build or
       reconsecration cooldown, and claim nesting/overlap resolution — right-clicking a consecrated
       altar's barrel opens a chest-GUI sacrifice interface; only enchanted items count as artifacts,
       valued purely off their enchantment profile (base weight = a configurable scale divided by each
-      enchantment's max level, so maxing out any enchantment is worth the same regardless of item type),
+      enchantment's max level, so maxing out any enchantment is worth the same regardless of item type,
+      *within the same rarity* - `altar.enchantment-rarity-multiplier` then scales that ceiling by a
+      configurable multiplier per COMMON/UNCOMMON/RARE/VERY_RARE bucket, so a rare enchantment is worth
+      more than a common one even when both are equally maxed out; rarity is bucketed from
+      `Enchantment.getWeight()` rather than Bukkit's own `getRarity()`/`EnchantmentRarity`, which are
+      deprecated for removal on the Paper API version this plugin builds against),
       summed per item with each repeated enchantment type within one sacrifice batch discounted by a
-      configurable per-repeat multiplier to discourage volume-stuffing, and consumed permanently on
-      confirm. Power is never stored as a raw counter - like radius, it's a live function recomputed
+      configurable per-repeat multiplier to discourage volume-stuffing (the rarity multiplier applies
+      once per enchantment type, not per repeat), and consumed permanently on
+      confirm. A freshly-consecrated altar starts at a configurable Power (`altar.starting-power`,
+      default 150 - comfortably above the Decaying threshold, so it's fully protected from the moment
+      it's placed rather than reading Critical before its owner can sacrifice anything; a one-time grace
+      baseline, not a real sacrifice, decaying on the normal clock; set to 0 for the old zero-grace
+      behavior). Power is never stored as a raw counter - like radius, it's a live function recomputed
       from each altar's last-sacrifice baseline and a configurable "days full-to-empty" decay rate, so a
       single large sacrifice always outlasts the same total value drip-fed across several smaller ones
       (decay eats the gap between deposits). Three vulnerability tiers (Normal, Decaying, Critical) gate
@@ -727,7 +757,8 @@ Tracking against the [master design plan](./oathbound-master-plan.md)'s build or
       heat-scaling Notary fees (live-computed like Altar Power, never persisted, decaying over a
       configurable window) with a hard 24h placement cap and a breach discount (approximated as "any
       oath between the pair went `BROKEN` recently," since the Ledger has no fault-attribution concept -
-      same known limitation as Honor), and head-return fulfillment (a qualifying kill force-drops a
+      same known limitation as Honor, see [`fault-attribution-plan.md`](./fault-attribution-plan.md)),
+      and head-return fulfillment (a qualifying kill force-drops a
       tagged `PLAYER_HEAD`; turning it in at any Notary pays out, per-head for group contracts, with no
       kill-attribution tracking at all). A qualifying kill also starts or extends (never resets) a
       banishment sentence to a fixed, admin-built End pen (`/oathbound-debug banishment set-pen`),
@@ -742,6 +773,31 @@ Tracking against the [master design plan](./oathbound-master-plan.md)'s build or
       server-owned economy tap. A one-time login notice (not every-login spam) tells a player they have a
       bounty on their head; `/oathbound-bounty list [player]` is the always-available pull command, and
       `/oathbound-bounty notify off` opts out of the notice.
+- [x] Ceremony Designer — a templated, item-driven shortcut for binding a group-to-individual agreement
+      with no menus or commands on the receiving end: `/oathbound-debug ceremony give <templateId>
+      <groupId> [player]` hands out a tagged item; right-clicking another player with it (or right-
+      clicking it onto an already-placed pressure plate/button to bind the ceremony there instead, so
+      the binder doesn't need to be online for the trigger to fire) speaks the template's `dialogue` to
+      the target in chat, and a `confirm-phrases` reply immediately materializes the template's clauses
+      (`TransferSpec` gated on `PvpDeathCount`, `TributeSpec` as an immediate-release `EscrowClause`,
+      `MobKillSpec`, `CustomFlagSpec`, and `DiplomacySpec` — the last sets a diplomatic relation between
+      the liege group and the target's own resolved territory group, enforcing the same REGION/KINGDOM-
+      tier-root restriction the debug diplomacy commands enforce, see Diplomacy below) into a real Oath,
+      taken straight through `DRAFT → PROPOSED → SEALED → ACTIVE` in one call since both sides already
+      consented via the ceremony itself. Ships with one live default template, `welcome-pact` — a zero-
+      mechanical-stakes onboarding pledge (RP-only `CustomFlagSpec`, no transfer/tribute/escrow/
+      diplomacy clause) safe to hand any new player without review; the fuller `fealty` example (real
+      land-transfer/tribute/alliance stakes) ships commented out as a template for admins who want more.
+      **Known gaps:** no admin command to unbind a block trigger short of physically breaking the block,
+      and no cooldown/rate-limit on re-triggering a plate beyond an "already has a pending prompt" guard.
+- [ ] Fault attribution — lets a manually-declared `BROKEN` breach (still the only way `BROKEN` is
+      reached today - see the Honor bullet above) name which party/parties were actually at fault, so
+      Honor loss/the Blood Oath curse debuff apply only to them instead of every party symmetrically,
+      and the Bounty breach discount can check "was the target specifically at fault" instead of "did
+      any breach happen between this pair." Deliberately does not add automated deadline/breach
+      detection (a separate, already-noted gap) or try to address a lopsided-but-honestly-*fulfilled*
+      oath (not a fault question - nobody broke anything). Fully researched, not yet built - see
+      [`fault-attribution-plan.md`](./fault-attribution-plan.md).
 - [ ] Polish pass: particle/sound effects, Notary flavor/skin system, full config-surface tuning
 
 ### Deliberately deferred (see master plan)
@@ -754,9 +810,6 @@ Tracking against the [master design plan](./oathbound-master-plan.md)'s build or
 - Release-oath hooks for reducing active banishment sentences
 - Altar Power pooling across multiple altars
 - Any siege/conquest mechanics beyond altar desecration
-
-### Reach Goal
-- Ceremony Designer: Bind agreements between a group and an individual using a special item (like a scepter) and right-click. Individual accepts if they say specified confirmation phrase.  Avoids time setting up contracts that interrupts roleplay, simply whip out the scepter and dub them on the spot and then they get the appropriate ownership/permissions for a knight (or whatever).
 
 ---
 

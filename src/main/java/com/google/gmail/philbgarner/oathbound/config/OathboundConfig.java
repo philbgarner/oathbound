@@ -1,5 +1,6 @@
 package com.google.gmail.philbgarner.oathbound.config;
 
+import com.google.gmail.philbgarner.oathbound.altar.EnchantmentRarityTier;
 import com.google.gmail.philbgarner.oathbound.bounty.PveContractDefinition;
 import com.google.gmail.philbgarner.oathbound.ceremony.CeremonyClauseSpec;
 import com.google.gmail.philbgarner.oathbound.ceremony.CeremonyTemplateDefinition;
@@ -37,6 +38,12 @@ public final class OathboundConfig {
             GroupTier.REGION, 2.0,
             GroupTier.KINGDOM, 3.0
     );
+    private static final Map<EnchantmentRarityTier, Double> DEFAULT_ENCHANTMENT_RARITY_MULTIPLIERS = Map.of(
+            EnchantmentRarityTier.COMMON, 1.0,
+            EnchantmentRarityTier.UNCOMMON, 1.5,
+            EnchantmentRarityTier.RARE, 2.5,
+            EnchantmentRarityTier.VERY_RARE, 4.0
+    );
 
     private final Path sqliteFile;
     private final int resolverDepthCutoff;
@@ -47,10 +54,12 @@ public final class OathboundConfig {
     private final int altarDecayDays;
     private final long altarCriticalThreshold;
     private final long altarDecayingThreshold;
+    private final long altarStartingPower;
     private final double altarXpLootConversionRate;
     private final Duration altarReconsecrationCooldown;
     private final double altarEnchantmentWeightScale;
     private final double altarRepeatEnchantmentDecay;
+    private final Map<EnchantmentRarityTier, Double> altarEnchantmentRarityMultipliers;
     private final long altarDesecrationHonorPenalty;
     private final long altarLootHonorPenalty;
     private final Duration escrowClaimExpiry;
@@ -90,9 +99,10 @@ public final class OathboundConfig {
     private OathboundConfig(Path sqliteFile, int resolverDepthCutoff, List<Currency> currencies,
                              Material altarCapstoneMaterial, double altarPowerRadiusScale,
                              Map<GroupTier, Double> altarTierRadiusMultipliers, int altarDecayDays,
-                             long altarCriticalThreshold, long altarDecayingThreshold,
+                             long altarCriticalThreshold, long altarDecayingThreshold, long altarStartingPower,
                              double altarXpLootConversionRate, Duration altarReconsecrationCooldown,
                              double altarEnchantmentWeightScale, double altarRepeatEnchantmentDecay,
+                             Map<EnchantmentRarityTier, Double> altarEnchantmentRarityMultipliers,
                              long altarDesecrationHonorPenalty, long altarLootHonorPenalty,
                              Duration escrowClaimExpiry,
                              Material protectionLockToolMaterial, long honorFulfillGainBase,
@@ -118,10 +128,12 @@ public final class OathboundConfig {
         this.altarDecayDays = altarDecayDays;
         this.altarCriticalThreshold = altarCriticalThreshold;
         this.altarDecayingThreshold = altarDecayingThreshold;
+        this.altarStartingPower = altarStartingPower;
         this.altarXpLootConversionRate = altarXpLootConversionRate;
         this.altarReconsecrationCooldown = altarReconsecrationCooldown;
         this.altarEnchantmentWeightScale = altarEnchantmentWeightScale;
         this.altarRepeatEnchantmentDecay = altarRepeatEnchantmentDecay;
+        this.altarEnchantmentRarityMultipliers = altarEnchantmentRarityMultipliers;
         this.altarDesecrationHonorPenalty = altarDesecrationHonorPenalty;
         this.altarLootHonorPenalty = altarLootHonorPenalty;
         this.escrowClaimExpiry = escrowClaimExpiry;
@@ -190,11 +202,21 @@ public final class OathboundConfig {
         int altarDecayDays = config.getInt("altar.decay-days", 5);
         long altarCriticalThreshold = config.getLong("altar.critical-threshold", 10L);
         long altarDecayingThreshold = config.getLong("altar.decaying-threshold", 100L);
+        long altarStartingPower = config.getLong("altar.starting-power", 150L);
         double altarXpLootConversionRate = config.getDouble("altar.xp-loot-conversion-rate", 1.0);
         int altarReconsecrationCooldownSeconds = config.getInt("altar.reconsecration-cooldown-seconds", 300);
         Duration altarReconsecrationCooldown = Duration.ofSeconds(altarReconsecrationCooldownSeconds);
         double altarEnchantmentWeightScale = config.getDouble("altar.enchantment-weight-scale", 10.0);
         double altarRepeatEnchantmentDecay = config.getDouble("altar.repeat-enchantment-decay", 0.5);
+
+        Map<EnchantmentRarityTier, Double> rarityMultipliers = new EnumMap<>(DEFAULT_ENCHANTMENT_RARITY_MULTIPLIERS);
+        ConfigurationSection raritySection = config.getConfigurationSection("altar.enchantment-rarity-multiplier");
+        if (raritySection != null) {
+            for (String key : raritySection.getKeys(false)) {
+                rarityMultipliers.put(EnchantmentRarityTier.valueOf(key.toUpperCase()), raritySection.getDouble(key));
+            }
+        }
+
         long altarDesecrationHonorPenalty = config.getLong("altar.desecration-honor-penalty", 50L);
         long altarLootHonorPenalty = config.getLong("altar.loot-honor-penalty", 0L);
 
@@ -290,8 +312,9 @@ public final class OathboundConfig {
 
         return new OathboundConfig(dataFolder.resolve(sqliteFileName), depthCutoff, currencies,
                 capstoneMaterial, powerRadiusScale, Map.copyOf(tierMultipliers),
-                altarDecayDays, altarCriticalThreshold, altarDecayingThreshold, altarXpLootConversionRate,
+                altarDecayDays, altarCriticalThreshold, altarDecayingThreshold, altarStartingPower, altarXpLootConversionRate,
                 altarReconsecrationCooldown, altarEnchantmentWeightScale, altarRepeatEnchantmentDecay,
+                Map.copyOf(rarityMultipliers),
                 altarDesecrationHonorPenalty, altarLootHonorPenalty, escrowClaimExpiry,
                 lockToolMaterial, fulfillGainBase, breachLossBase, bloodOathMultiplier, minForBloodOath,
                 honorTiers, debuffEffect, debuffDuration, debuffAmplifier,
@@ -460,6 +483,10 @@ public final class OathboundConfig {
         return altarDecayingThreshold;
     }
 
+    public long altarStartingPower() {
+        return altarStartingPower;
+    }
+
     public double altarXpLootConversionRate() {
         return altarXpLootConversionRate;
     }
@@ -474,6 +501,11 @@ public final class OathboundConfig {
 
     public double altarRepeatEnchantmentDecay() {
         return altarRepeatEnchantmentDecay;
+    }
+
+    /** Falls back to {@code 1.0} (neutral) for a rarity somehow missing from the configured map. */
+    public double altarRarityMultiplier(EnchantmentRarityTier rarity) {
+        return altarEnchantmentRarityMultipliers.getOrDefault(rarity, 1.0);
     }
 
     public long altarDesecrationHonorPenalty() {

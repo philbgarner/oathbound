@@ -8,10 +8,12 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Created the moment its physical structure (barrel + capstone + candle) is completed, at zero Power.
- * Power is never stored as a raw counter - like radius, it's a live function of {@code powerBaseline}
- * (the Power as of the most recent sacrifice) and how many days have passed since {@code lastSacrificeAt},
- * decaying linearly to zero over a configured number of days. See {@link AltarPowerMath}.
+ * Created the moment its physical structure (barrel + capstone + candle) is completed, at a
+ * configurable starting Power (see {@code altar.starting-power} - a grace amount so a brand-new altar
+ * doesn't read Critical before its owner has had a chance to sacrifice anything). Power is never
+ * stored as a raw counter - like radius, it's a live function of {@code powerBaseline} (the Power as
+ * of the most recent sacrifice) and how many days have passed since {@code lastSacrificeAt}, decaying
+ * linearly to zero over a configured number of days. See {@link AltarPowerMath}.
  */
 public final class Altar {
     private final UUID id;
@@ -26,11 +28,18 @@ public final class Altar {
     private AltarVulnerabilityTier lastKnownTier;
 
     public Altar(UUID id, EntityRef owner, AltarLocation location, Instant consecratedAt) {
+        this(id, owner, location, consecratedAt, 0L);
+    }
+
+    /** {@code startingPower} is a one-time grace baseline granted at consecration, not counted as a
+     * real sacrifice - it decays on the normal clock like any other Power, and doesn't set
+     * {@link #lastSacrificeValue()} (nothing to Loot from it before a real sacrifice happens). */
+    public Altar(UUID id, EntityRef owner, AltarLocation location, Instant consecratedAt, long startingPower) {
         this.id = Objects.requireNonNull(id, "id");
         this.owner = Objects.requireNonNull(owner, "owner");
         this.location = Objects.requireNonNull(location, "location");
         this.consecratedAt = Objects.requireNonNull(consecratedAt, "consecratedAt");
-        this.powerBaseline = 0L;
+        this.powerBaseline = startingPower;
         this.lastSacrificeAt = consecratedAt;
         this.lastSacrificeValue = 0L;
         this.cooldownUntil = consecratedAt;

@@ -3,6 +3,8 @@ package com.google.gmail.philbgarner.oathbound.gui;
 import com.google.gmail.philbgarner.oathbound.OathboundPlugin;
 import com.google.gmail.philbgarner.oathbound.altar.Altar;
 import com.google.gmail.philbgarner.oathbound.altar.EnchantmentMaxLevelLookup;
+import com.google.gmail.philbgarner.oathbound.altar.EnchantmentRarityLookup;
+import com.google.gmail.philbgarner.oathbound.altar.EnchantmentRarityTier;
 import com.google.gmail.philbgarner.oathbound.altar.SacrificeValuationService;
 import io.papermc.paper.registry.RegistryAccess;
 import io.papermc.paper.registry.RegistryKey;
@@ -41,6 +43,19 @@ public final class AltarSacrificeGuiListener implements Listener {
 
     public AltarSacrificeGuiListener(OathboundPlugin plugin) {
         this.plugin = plugin;
+    }
+
+    /** Unlike {@link #MAX_LEVELS}, this needs config (the per-rarity multipliers), so it can't be a
+     * static field - built per call, capturing {@code plugin}. Buckets {@code Enchantment.getWeight()}
+     * via {@link EnchantmentRarityTier#of} rather than using the deprecated-for-removal
+     * {@code Enchantment.getRarity()}/{@code EnchantmentRarity}. */
+    private EnchantmentRarityLookup rarityLookup() {
+        return key -> {
+            Enchantment enchantment = RegistryAccess.registryAccess().getRegistry(RegistryKey.ENCHANTMENT)
+                    .get(NamespacedKey.fromString(key));
+            EnchantmentRarityTier tier = EnchantmentRarityTier.of(enchantment == null ? 10 : enchantment.getWeight());
+            return plugin.oathboundConfig().altarRarityMultiplier(tier);
+        };
     }
 
     @EventHandler
@@ -125,7 +140,7 @@ public final class AltarSacrificeGuiListener implements Listener {
             }
         }
 
-        long sacrificeValue = SacrificeValuationService.valueOf(perItemEnchants, MAX_LEVELS,
+        long sacrificeValue = SacrificeValuationService.valueOf(perItemEnchants, MAX_LEVELS, rarityLookup(),
                 plugin.oathboundConfig().altarEnchantmentWeightScale(), plugin.oathboundConfig().altarRepeatEnchantmentDecay());
         if (sacrificeValue <= 0) {
             player.sendMessage("Deposit at least one enchanted item.");

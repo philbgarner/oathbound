@@ -2,8 +2,9 @@
 
 A templated, item-driven shortcut for binding a group-to-individual agreement with no menus or
 commands on the receiving end - just a right-click and a chat reply. Templates are admin-authored,
-static config (`ceremony-templates` in `config.yml`; empty by default, so the feature is inert until a
-server admin writes at least one). Paste into [mermaid.live](https://mermaid.live).
+static config (`ceremony-templates` in `config.yml`; ships with one live default, `welcome-pact` - a
+zero-mechanical-stakes onboarding pledge, safe to hand out without review). Paste into
+[mermaid.live](https://mermaid.live).
 
 ```mermaid
 flowchart TD
@@ -43,10 +44,10 @@ flowchart TD
   [Oath Lifecycle](oath-lifecycle.md)), just skipping the usual propose-then-wait gap.
 - A template's clause list can include a `DiplomacySpec` (see [Diplomacy](diplomacy.md)), materialized
   into a `DiplomacyClause` between the liege group and the target's own resolved territory group - the
-  shipped `fealty` example in `config.yml` uses one (`state: alliance`) to seal an alliance between the
-  Crown and the sworn vassal's own kingdom in the same ceremony that transfers land and collects
-  tribute. `state: neutral` is rejected - there's nothing to "declare" back to it (same restriction as
-  the unilateral/treaty diplomacy paths).
+  commented-out `fealty` *example* in `config.yml` (not shipped active, unlike `welcome-pact` below)
+  uses one (`state: alliance`) to seal an alliance between the Crown and the sworn vassal's own kingdom
+  in the same ceremony that transfers land and collects tribute. `state: neutral` is rejected - there's
+  nothing to "declare" back to it (same restriction as the unilateral/treaty diplomacy paths).
 - `CeremonyService.materialize` enforces the same "only REGION/KINGDOM-tier root groups may hold a
   relation" rule the debug diplomacy commands enforce, resolved via `OwnershipResolver.resolveRootGroup`
   on both the liege group and the target's resolved territory group - a ceremony can't quietly create a
@@ -54,9 +55,12 @@ flowchart TD
   fails with a `CeremonyValidationException` (shown to both parties, oath not created) if either side's
   root isn't REGION/KINGDOM tier.
 - No connection exists to Altars anywhere in the ceremony code.
-- **Known gaps:** `ceremony-templates` ships empty, so nothing works until an admin authors YAML. There
-  is no admin command to unbind a block trigger short of physically breaking the block, and no
-  cooldown/rate-limit on re-triggering a plate beyond the "already has a pending prompt" guard.
+- **Shipped default:** `welcome-pact` (`PAPER`/"Charter of Welcome") has zero mechanical stakes - just
+  a `CustomFlagSpec` RP pledge, no transfer/tribute/escrow/diplomacy clause - specifically so an admin
+  can hand it to a new player via `/oathbound-debug ceremony give welcome-pact <groupId> [player]`
+  without reviewing it first. Edit or delete it like any other config entry.
+- **Known gaps:** no admin command to unbind a block trigger short of physically breaking the block,
+  and no cooldown/rate-limit on re-triggering a plate beyond the "already has a pending prompt" guard.
 
 ## Update this diagram when touching
 
