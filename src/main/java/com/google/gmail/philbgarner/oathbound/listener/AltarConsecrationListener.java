@@ -70,7 +70,7 @@ public final class AltarConsecrationListener implements Listener {
 
         PlayerRef owner = new PlayerRef(event.getPlayer().getUniqueId());
         Altar altar = new Altar(UUID.randomUUID(), owner, location, Instant.now(),
-                plugin.oathboundConfig().altarStartingPower());
+                plugin.oathboundConfig().altarStartingPower(), plugin.oathboundConfig().altarReconsecrationCooldown());
         plugin.altarCache().put(altar.id(), altar);
         plugin.persistAltarAsync(altar);
 

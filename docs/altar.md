@@ -13,7 +13,7 @@ flowchart TD
     StructureCheck -->|yes| NestingCheck["AltarNestingService.checkPlacement:\nfor each EXISTING altar whose live radius\ncovers this spot, smallest tier first"]
     NestingCheck --> TierCompare{"existingTier.ordinal() &lt;=\nnewTier.ordinal()?"}
     TierCompare -->|yes, same or smaller tier| Blocked["Consecration blocked"]
-    TierCompare -->|"no altar blocks it -\nall covering altars are\nstrictly larger tier"| Consecrate["Consecrated at altar.starting-power\n(default 150), owned by whoever\nplaced the candle"]
+    TierCompare -->|"no altar blocks it -\nall covering altars are\nstrictly larger tier"| Consecrate["Consecrated at altar.starting-power\n(default 150), owned by whoever\nplaced the candle - reconsecration-cooldown\nseeded immediately, not left at zero"]
 ```
 
 This check runs **once, at consecration time only** - a larger claim later shrinking from decay never
@@ -41,7 +41,8 @@ stateDiagram-v2
 ```mermaid
 flowchart TD
     RightClick["Right-click the barrel"] --> Tier{Live vulnerability tier}
-    Tier -->|NORMAL or DECAYING| SacrificeGui["Open sacrifice chest-GUI:\ndeposit enchanted items, confirm to\nconsume permanently and raise Power"]
+    Tier -->|"NORMAL or DECAYING,\nnot sneaking"| SacrificeGui["Open sacrifice chest-GUI:\ndeposit enchanted items, confirm to\nconsume permanently and raise Power"]
+    Tier -->|"NORMAL or DECAYING,\nsneaking"| PrayerBoard["Open Altar of Intercession board\n(gui.BanishmentPrayerBoardGui):\nlist every active banishment,\nclick one to pray for their release"]
     Tier -->|CRITICAL| Loot["Loot outcome:\nXP orbs = value of most recent\nsacrifice * xp-loot-conversion-rate.\nNo Honor penalty by default\n(altar.loot-honor-penalty)."]
 
     BreakBarrel["Break the barrel block"] --> BreakTier{Live vulnerability tier}
@@ -54,6 +55,22 @@ A successful top-up (recovering from Critical, or a fresh post-desecration recon
 stays suppressed even though Power already reads as sufficient - see
 [Permissions & Access Gating](permissions-access.md). This closes the panic-deposit-mid-raid loophole.
 The Loot/Destroy check itself is not affected by this cooldown - it looks only at live Power.
+
+**A brand-new consecration seeds this same cooldown, not just a top-up.** `Altar`'s constructor takes
+the cooldown duration directly (`cooldownUntil = consecratedAt.plus(initialCooldown)`) - a "raid, raze,
+replace" (destroy a Critical barrel, immediately rebuild on the same spot) no longer grants instant full
+protection to whoever rebuilds, owner or raider, which a pre-fix version of this constructor did.
+
+### Prayer / intercession (`banishment.prayer-hours-per-power`)
+
+Shift-right-clicking a NORMAL/DECAYING barrel opens a second ritual, separate from the Power sacrifice:
+`gui.BanishmentPrayerBoardGui` lists everyone currently serving a banishment, and picking one opens
+`gui.PrayerAltarGui` - the same enchanted-items-only deposit screen as a Power sacrifice
+(`gui.SacrificeInputSupport` computes the value both share), but the value is spent cutting time from
+the target's sentence (`Banishment.reduceSentence`) instead of raising this altar's own Power. A large
+enough offering forgives the sentence outright. This is one of two release paths - see
+[Bounty / Kill Contracts & Banishment](bounty-banishment.md) for the Oath-based
+`BanishmentReleaseClause` alternative.
 
 ## Notes
 
@@ -84,4 +101,6 @@ The Loot/Destroy check itself is not affected by this cooldown - it looks only a
 `altar/EnchantmentRarityTier.java`, `listener/AltarInteractListener.java`,
 `listener/AltarDesecrationListener.java`, `listener/AltarWarningListener.java`,
 `listener/AltarConsecrationListener.java`, `gui/AltarSacrificeGuiListener.java`,
-`config/OathboundConfig.java` (altar section).
+`gui/SacrificeInputSupport.java`, `gui/BanishmentPrayerBoardGui.java`, `gui/BanishmentPrayerBoardHolder.java`,
+`gui/PrayerAltarGui.java`, `gui/PrayerAltarHolder.java`, `gui/BanishmentPrayerGuiListener.java`,
+`config/OathboundConfig.java` (altar and banishment sections).

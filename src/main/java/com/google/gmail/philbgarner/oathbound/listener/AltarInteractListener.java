@@ -8,6 +8,7 @@ import com.google.gmail.philbgarner.oathbound.altar.AltarVulnerabilityTier;
 import com.google.gmail.philbgarner.oathbound.group.OwnershipResolver;
 import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
 import com.google.gmail.philbgarner.oathbound.gui.AltarSacrificeGui;
+import com.google.gmail.philbgarner.oathbound.gui.BanishmentPrayerBoardGui;
 import com.google.gmail.philbgarner.oathbound.honor.PlayerHonor;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
@@ -66,6 +67,11 @@ public final class AltarInteractListener implements Listener {
 
         if (tier == AltarVulnerabilityTier.CRITICAL) {
             handleLoot(event.getPlayer(), altar);
+        } else if (event.getPlayer().isSneaking()) {
+            // Shift-right-click on a legitimately protected altar opens the intercession board instead of
+            // the normal sacrifice screen - praying for a banished player's release is a different ritual
+            // spending the same currency (see BanishmentPrayerGuiListener), not a Power deposit.
+            BanishmentPrayerBoardGui.open(plugin, event.getPlayer());
         } else {
             AltarSacrificeGui.open(plugin, event.getPlayer(), altar.id());
         }

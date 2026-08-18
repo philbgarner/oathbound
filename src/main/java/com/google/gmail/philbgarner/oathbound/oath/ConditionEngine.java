@@ -1,5 +1,6 @@
 package com.google.gmail.philbgarner.oathbound.oath;
 
+import com.google.gmail.philbgarner.oathbound.bounty.Banishment;
 import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomacyService;
 import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticRelation;
 import com.google.gmail.philbgarner.oathbound.economy.Currency;
@@ -8,6 +9,7 @@ import com.google.gmail.philbgarner.oathbound.group.OwnershipResolver;
 import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -40,7 +42,7 @@ import java.util.function.Function;
 public final class ConditionEngine {
 
     public record TickResult(List<Oath> changedOaths, List<EscrowClaim> newClaims,
-                              List<DiplomaticRelation> changedRelations) {
+                              List<DiplomaticRelation> changedRelations, List<Banishment> changedBanishments) {
     }
 
     private final OathService oathService;
@@ -51,12 +53,13 @@ public final class ConditionEngine {
     private final MobKillTracker mobKillTracker;
     private final ManualConfirmStore manualConfirms;
     private final DiplomacyService diplomacyService;
+    private final Function<PlayerRef, Optional<Banishment>> activeBanishmentLookup;
     private final ConditionEvaluator evaluator = new ConditionEvaluator();
 
     public ConditionEngine(OathService oathService, OwnershipResolver ownershipResolver,
                             EconomyService economyService, Function<UUID, Optional<ProtectionGroup>> groupLookup,
                             DeathTracker deathTracker, MobKillTracker mobKillTracker, ManualConfirmStore manualConfirms,
-                            DiplomacyService diplomacyService) {
+                            DiplomacyService diplomacyService, Function<PlayerRef, Optional<Banishment>> activeBanishmentLookup) {
         this.oathService = Objects.requireNonNull(oathService, "oathService");
         this.ownershipResolver = Objects.requireNonNull(ownershipResolver, "ownershipResolver");
         this.economyService = Objects.requireNonNull(economyService, "economyService");
@@ -65,24 +68,29 @@ public final class ConditionEngine {
         this.mobKillTracker = Objects.requireNonNull(mobKillTracker, "mobKillTracker");
         this.manualConfirms = Objects.requireNonNull(manualConfirms, "manualConfirms");
         this.diplomacyService = Objects.requireNonNull(diplomacyService, "diplomacyService");
+        this.activeBanishmentLookup = Objects.requireNonNull(activeBanishmentLookup, "activeBanishmentLookup");
     }
 
     /** Evaluates every ACTIVE oath in {@code oaths}, returning the oaths that changed (for the caller to
-     * persist), any newly released escrow item batches, and any diplomatic relations a sealed treaty
-     * clause changed this tick. Oaths in any other state are ignored. */
+     * persist), any newly released escrow item batches, any diplomatic relations a sealed treaty clause
+     * changed this tick, and any banishments a release clause reduced/forgave this tick. Oaths in any
+     * other state are ignored. */
     public TickResult tick(Collection<Oath> oaths, Instant now) {
         List<Oath> changedOaths = new ArrayList<>();
         List<EscrowClaim> newClaims = new ArrayList<>();
         List<DiplomaticRelation> changedRelations = new ArrayList<>();
+        List<Banishment> changedBanishments = new ArrayList<>();
         for (Oath oath : oaths) {
-            if (oath.state() == OathState.ACTIVE && tickOne(oath, now, newClaims, changedRelations)) {
+            if (oath.state() == OathState.ACTIVE
+                    && tickOne(oath, now, newClaims, changedRelations, changedBanishments)) {
                 changedOaths.add(oath);
             }
         }
-        return new TickResult(changedOaths, newClaims, changedRelations);
+        return new TickResult(changedOaths, newClaims, changedRelations, changedBanishments);
     }
 
-    private boolean tickOne(Oath oath, Instant now, List<EscrowClaim> newClaims, List<DiplomaticRelation> changedRelations) {
+    private boolean tickOne(Oath oath, Instant now, List<EscrowClaim> newClaims,
+                             List<DiplomaticRelation> changedRelations, List<Banishment> changedBanishments) {
         if (oath.activatedAt() == null) {
             // Legacy/rehydrated data from before activatedAt existed - nothing safe to evaluate against.
             return false;
@@ -103,7 +111,7 @@ public final class ConditionEngine {
             }
             if (!(clause instanceof Clause.TransferClause) && !(clause instanceof Clause.EscrowClause)
                     && !(clause instanceof Clause.KillCountClause) && !(clause instanceof Clause.MobKillClause)
-                    && !(clause instanceof Clause.DiplomacyClause)) {
+                    && !(clause instanceof Clause.DiplomacyClause) && !(clause instanceof Clause.BanishmentReleaseClause)) {
                 allAutoResolvableAndDone = false;
                 continue;
             }
@@ -128,6 +136,9 @@ public final class ConditionEngine {
                 case Clause.DiplomacyClause diplomacy ->
                         evaluator.evaluate(diplomacy.condition(), oath.activatedAt(), now, context)
                                 && executeDiplomacy(diplomacy, now, changedRelations);
+                case Clause.BanishmentReleaseClause release ->
+                        evaluator.evaluate(release.condition(), oath.activatedAt(), now, context)
+                                && executeBanishmentRelease(release, now, changedBanishments);
                 default -> false;
             };
 
@@ -175,6 +186,24 @@ public final class ConditionEngine {
         DiplomaticRelation relation = diplomacyService.setState(diplomacy.groupA().groupId(),
                 diplomacy.groupB().groupId(), diplomacy.newState(), now);
         changedRelations.add(relation);
+        return true;
+    }
+
+    /** Resolves quietly (returns {@code true}, nothing to do) if {@code target} isn't currently serving an
+     * active sentence - a release oath sealed before the sentence starts, or one that's simply outlived
+     * by an already-expired/forgiven sentence, shouldn't hang the oath forever waiting on nothing. */
+    private boolean executeBanishmentRelease(Clause.BanishmentReleaseClause release, Instant now,
+                                              List<Banishment> changedBanishments) {
+        Optional<Banishment> maybeBanishment = activeBanishmentLookup.apply(release.target());
+        if (maybeBanishment.isEmpty() || !maybeBanishment.get().active(now)) {
+            return true;
+        }
+        Banishment banishment = maybeBanishment.get();
+        Duration reduction = release.fullRelease()
+                ? Duration.between(now, banishment.releaseAt())
+                : release.reduction();
+        banishment.reduceSentence(reduction, now);
+        changedBanishments.add(banishment);
         return true;
     }
 

@@ -44,6 +44,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -215,13 +216,14 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
 
     private void handleOath(Player sender, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage("Usage: /oathbound-debug oath <create|addflag|propose|seal|activate|fulfill|breach|void|info|list> ...");
+            sender.sendMessage("Usage: /oathbound-debug oath <create|addflag|adddiplomacy|addbanishmentrelease|propose|seal|activate|fulfill|breach|void|info|list> ...");
             return;
         }
         switch (args[1].toLowerCase()) {
             case "create" -> oathCreate(sender, args);
             case "addflag" -> oathAddFlag(sender, args);
             case "adddiplomacy" -> oathAddDiplomacy(sender, args);
+            case "addbanishmentrelease" -> oathAddBanishmentRelease(sender, args);
             case "confirm" -> oathConfirm(sender, args);
             case "propose" -> oathTransition(sender, args, OathService::propose);
             case "seal" -> oathTransition(sender, args, OathService::seal);
@@ -339,6 +341,43 @@ public final class OathboundDebugCommand implements CommandExecutor, TabComplete
                     + " tier - only REGION/KINGDOM-tier groups can participate in diplomacy.");
         }
         return Optional.empty();
+    }
+
+    /** The release-oath hook: an ally negotiates with whoever holds authority over a banishment sentence
+     * via the normal propose/seal Oath handshake, then this clause fires once activated - consent already
+     * happened at sealing, same as {@link #oathAddDiplomacy}'s treaty clause, so this defaults to
+     * {@code Immediate} rather than layering on an extra ManualConfirm. */
+    private void oathAddBanishmentRelease(Player sender, String[] args) {
+        if (args.length < 5) {
+            sender.sendMessage("Usage: /oathbound-debug oath addbanishmentrelease <oathId> <bannedPlayerName> <hours|full>");
+            return;
+        }
+        Optional<Oath> oath = findOath(args[2]);
+        if (oath.isEmpty()) {
+            sender.sendMessage("No such oath: " + args[2]);
+            return;
+        }
+        OfflinePlayer target = Bukkit.getOfflinePlayer(args[3]);
+        PlayerRef targetRef = new PlayerRef(target.getUniqueId());
+
+        boolean fullRelease = args[4].equalsIgnoreCase("full");
+        Duration reduction = Duration.ZERO;
+        if (!fullRelease) {
+            try {
+                reduction = Duration.ofHours(Long.parseLong(args[4]));
+            } catch (NumberFormatException e) {
+                sender.sendMessage("Reduction must be a whole number of hours, or 'full'.");
+                return;
+            }
+        }
+
+        Clause.BanishmentReleaseClause clause = new Clause.BanishmentReleaseClause(
+                targetRef, reduction, fullRelease, new Condition.Immediate());
+        plugin.oathService().addClause(oath.get(), clause);
+        plugin.persistOathAsync(oath.get());
+        sender.sendMessage("Added a banishment release clause to " + oath.get().id() + ": " + args[3]
+                + (fullRelease ? " is fully pardoned" : "'s sentence is cut by " + reduction.toHours() + "h")
+                + " once sealed.");
     }
 
     private void oathConfirm(Player sender, String[] args) {

@@ -14,6 +14,7 @@ import com.google.gmail.philbgarner.oathbound.bounty.BountyService;
 import com.google.gmail.philbgarner.oathbound.bounty.PveContractProgress;
 import com.google.gmail.philbgarner.oathbound.bounty.PveContractService;
 import com.google.gmail.philbgarner.oathbound.ceremony.CeremonyService;
+import com.google.gmail.philbgarner.oathbound.ceremony.CeremonyTemplateDefinition;
 import com.google.gmail.philbgarner.oathbound.ceremony.CeremonyTrigger;
 import com.google.gmail.philbgarner.oathbound.command.OathboundBountyCommand;
 import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomacyService;
@@ -34,6 +35,7 @@ import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroupRef;
 import com.google.gmail.philbgarner.oathbound.gui.AltarSacrificeGuiListener;
+import com.google.gmail.philbgarner.oathbound.gui.BanishmentPrayerGuiListener;
 import com.google.gmail.philbgarner.oathbound.gui.BountyBoardGuiListener;
 import com.google.gmail.philbgarner.oathbound.gui.BountyPlacementListener;
 import com.google.gmail.philbgarner.oathbound.gui.NotaryMenuGuiListener;
@@ -89,6 +91,9 @@ import com.google.gmail.philbgarner.oathbound.protection.Protection;
 import com.google.gmail.philbgarner.oathbound.villager.NpcRole;
 import com.google.gmail.philbgarner.oathbound.villager.VillagerNpc;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.Particle;
+import org.bukkit.World;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -214,7 +219,7 @@ public final class OathboundPlugin extends JavaPlugin {
         diplomacyService = new DiplomacyService(ownershipResolver);
         conditionEngine = new ConditionEngine(oathService, ownershipResolver, economyService,
                 id -> Optional.ofNullable(groupCache.get(id)), deathTracker, mobKillTracker, manualConfirmStore,
-                diplomacyService);
+                diplomacyService, this::activeBanishmentFor);
         escrowExpiryService = new EscrowExpiryService();
         negotiationExpiryService = new NegotiationExpiryService();
         altarDecaySweepService = new AltarDecaySweepService();
@@ -286,6 +291,7 @@ public final class OathboundPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new AltarMonsterSpawnGuardListener(this), this);
         getServer().getPluginManager().registerEvents(new AltarWarningListener(this), this);
         getServer().getPluginManager().registerEvents(new AltarSacrificeGuiListener(this), this);
+        getServer().getPluginManager().registerEvents(new BanishmentPrayerGuiListener(this), this);
         getServer().getPluginManager().registerEvents(new TradeGuiListener(this), this);
         getServer().getPluginManager().registerEvents(new OathBuilderListener(this), this);
         getServer().getPluginManager().registerEvents(new DeathTrackingListener(this), this);
@@ -313,6 +319,7 @@ public final class OathboundPlugin extends JavaPlugin {
         if (oathboundConfig.ceremonyBlockTriggersEnabled()) {
             getServer().getPluginManager().registerEvents(new CeremonyTriggerListener(this), this);
             getServer().getPluginManager().registerEvents(new CeremonyTriggerBreakListener(this), this);
+            getServer().getScheduler().runTaskTimer(this, this::ambientCeremonyTriggerParticles, 20L, 20L);
         }
         if (oathboundConfig.pvpRestrictToDeclaredWars()) {
             getServer().getPluginManager().registerEvents(new DiplomaticPvpGuardListener(this), this);
@@ -333,6 +340,7 @@ public final class OathboundPlugin extends JavaPlugin {
                 persistEscrowClaimAsync(claim);
             }
             result.changedRelations().forEach(this::persistDiplomaticRelationAsync);
+            result.changedBanishments().forEach(this::persistBanishmentAsync);
         } catch (RuntimeException e) {
             getLogger().log(Level.SEVERE, "Condition engine tick failed", e);
         }
@@ -392,12 +400,46 @@ public final class OathboundPlugin extends JavaPlugin {
         }
     }
 
+    /** Ambient particle aura at every bound pressure-plate/button trigger whose template
+     * {@link CeremonyTemplateDefinition#hasRealStakes()} - the trigger-block half of the "this isn't a
+     * zero-stakes item" warning ({@code bukkit.CeremonyItems} handles the item-in-hand half). Runs
+     * independently of any player interacting with the block, since the whole point is to warn someone
+     * *before* they step on it. */
+    private void ambientCeremonyTriggerParticles() {
+        for (CeremonyTrigger trigger : ceremonyTriggerCache.values()) {
+            CeremonyTemplateDefinition template = oathboundConfig.ceremonyTemplates().stream()
+                    .filter(t -> t.id().equals(trigger.templateId()))
+                    .findFirst().orElse(null);
+            if (template == null || !template.hasRealStakes()) {
+                continue;
+            }
+            World world = Bukkit.getWorld(trigger.location().worldId());
+            if (world == null) {
+                continue;
+            }
+            Location location = new Location(world, trigger.location().x() + 0.5,
+                    trigger.location().y() + 0.5, trigger.location().z() + 0.5);
+            world.spawnParticle(Particle.ENCHANT, location, 6, 0.3, 0.3, 0.3, 0.02);
+        }
+    }
+
     /** Live inactivity lookup for {@link BountyAbandonmentSweepService} - injected as a Function exactly
      * like {@link ConditionEngine}'s groupLookup seam, so the sweep service itself stays Bukkit-free and
      * unit-testable with a fake. */
     private Instant lastPlayed(UUID playerId) {
         long lastPlayedMillis = Bukkit.getOfflinePlayer(playerId).getLastPlayed();
         return lastPlayedMillis == 0L ? Instant.EPOCH : Instant.ofEpochMilli(lastPlayedMillis);
+    }
+
+    /** Live active-banishment lookup for {@link ConditionEngine}'s {@code BanishmentReleaseClause}
+     * execution - same seam shape as {@link #lastPlayed} and the groupLookup Function passed to the same
+     * constructor. A player can only ever be actively serving one sentence at a time (see
+     * {@link BanishmentService#beginOrExtend}), so the first active match is the only one that matters. */
+    private Optional<Banishment> activeBanishmentFor(PlayerRef player) {
+        Instant now = Instant.now();
+        return banishmentCache.values().stream()
+                .filter(banishment -> banishment.player().equals(player) && banishment.active(now))
+                .findFirst();
     }
 
     public org.bukkit.Location toBukkitLocation(com.google.gmail.philbgarner.oathbound.bounty.ReturnLocation location) {

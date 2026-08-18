@@ -28,13 +28,24 @@ public final class Altar {
     private AltarVulnerabilityTier lastKnownTier;
 
     public Altar(UUID id, EntityRef owner, AltarLocation location, Instant consecratedAt) {
-        this(id, owner, location, consecratedAt, 0L);
+        this(id, owner, location, consecratedAt, 0L, Duration.ZERO);
     }
 
     /** {@code startingPower} is a one-time grace baseline granted at consecration, not counted as a
      * real sacrifice - it decays on the normal clock like any other Power, and doesn't set
      * {@link #lastSacrificeValue()} (nothing to Loot from it before a real sacrifice happens). */
     public Altar(UUID id, EntityRef owner, AltarLocation location, Instant consecratedAt, long startingPower) {
+        this(id, owner, location, consecratedAt, startingPower, Duration.ZERO);
+    }
+
+    /** {@code initialCooldown} seeds the same reconsecration-cooldown window a sacrifice top-up starts
+     * (see {@link #applySacrifice}) - without it, destroying a Critical altar and immediately rebuilding
+     * (owner or raider) would grant instant full protection, defeating the exact panic-response window
+     * the cooldown exists to close. Callers consecrating a real, player-triggered altar should always pass
+     * {@code altar.reconsecration-cooldown-seconds}; {@code Duration.ZERO} is only for tests and other
+     * synthetic construction that don't care about the cooldown. */
+    public Altar(UUID id, EntityRef owner, AltarLocation location, Instant consecratedAt, long startingPower,
+                 Duration initialCooldown) {
         this.id = Objects.requireNonNull(id, "id");
         this.owner = Objects.requireNonNull(owner, "owner");
         this.location = Objects.requireNonNull(location, "location");
@@ -42,7 +53,7 @@ public final class Altar {
         this.powerBaseline = startingPower;
         this.lastSacrificeAt = consecratedAt;
         this.lastSacrificeValue = 0L;
-        this.cooldownUntil = consecratedAt;
+        this.cooldownUntil = consecratedAt.plus(Objects.requireNonNull(initialCooldown, "initialCooldown"));
         this.lastKnownTier = AltarVulnerabilityTier.NORMAL;
     }
 

@@ -8,10 +8,15 @@ import java.util.Objects;
  * {@code bounty.PveContractDefinition}). {@code itemMaterialName} is a plain
  * {@code org.bukkit.Material} name and {@code CeremonyClauseSpec.MobKillSpec.mobTypeName()} a plain
  * {@code org.bukkit.entity.EntityType} name, rather than the enums themselves, since this package is
- * Bukkit-free by design; Bukkit-glue code resolves the real types at the point of use. */
+ * Bukkit-free by design; Bukkit-glue code resolves the real types at the point of use.
+ *
+ * <p>Confirmation is a clickable [Accept]/[Decline] chat prompt (see
+ * {@code listener.CeremonyChatListener}), not free-text phrase matching - an earlier design matched the
+ * target's next chat message against configured phrases, which meant an unrelated message that happened
+ * to equal one (e.g. a bare "yes" answering someone else's question) could accidentally seal a real,
+ * possibly high-stakes oath. There is deliberately no phrase configuration left to author. */
 public record CeremonyTemplateDefinition(String id, String displayName, String itemMaterialName,
                                           String itemDisplayName, List<String> dialogueLines,
-                                          List<String> confirmPhrases, List<String> declinePhrases,
                                           int promptTimeoutSeconds, boolean bloodOath,
                                           List<CeremonyClauseSpec> clauses) {
     public CeremonyTemplateDefinition {
@@ -20,18 +25,19 @@ public record CeremonyTemplateDefinition(String id, String displayName, String i
         Objects.requireNonNull(itemMaterialName, "itemMaterialName");
         Objects.requireNonNull(itemDisplayName, "itemDisplayName");
         Objects.requireNonNull(dialogueLines, "dialogueLines");
-        Objects.requireNonNull(confirmPhrases, "confirmPhrases");
-        Objects.requireNonNull(declinePhrases, "declinePhrases");
         Objects.requireNonNull(clauses, "clauses");
         dialogueLines = List.copyOf(dialogueLines);
-        confirmPhrases = List.copyOf(confirmPhrases);
-        declinePhrases = List.copyOf(declinePhrases);
         clauses = List.copyOf(clauses);
-        if (confirmPhrases.isEmpty()) {
-            throw new IllegalArgumentException("confirmPhrases must not be empty");
-        }
         if (promptTimeoutSeconds <= 0) {
             throw new IllegalArgumentException("promptTimeoutSeconds must be positive");
         }
+    }
+
+    /** {@code true} if sealing this ceremony does anything beyond an RP-only {@code CustomFlagSpec} -
+     * a transfer, tribute, mob-kill obligation, or diplomacy change. Drives the item glint and bound
+     * trigger-block particle aura ({@code bukkit.CeremonyItems}, {@code OathboundPlugin}) that warn a
+     * player this isn't a zero-stakes pledge like {@code welcome-pact} before they commit to it. */
+    public boolean hasRealStakes() {
+        return clauses.stream().anyMatch(spec -> !(spec instanceof CeremonyClauseSpec.CustomFlagSpec));
     }
 }

@@ -2,15 +2,7 @@ package com.google.gmail.philbgarner.oathbound.gui;
 
 import com.google.gmail.philbgarner.oathbound.OathboundPlugin;
 import com.google.gmail.philbgarner.oathbound.altar.Altar;
-import com.google.gmail.philbgarner.oathbound.altar.EnchantmentMaxLevelLookup;
-import com.google.gmail.philbgarner.oathbound.altar.EnchantmentRarityLookup;
-import com.google.gmail.philbgarner.oathbound.altar.EnchantmentRarityTier;
 import com.google.gmail.philbgarner.oathbound.altar.SacrificeValuationService;
-import io.papermc.paper.registry.RegistryAccess;
-import io.papermc.paper.registry.RegistryKey;
-import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
-import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -20,42 +12,18 @@ import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.EnchantmentStorageMeta;
-import org.bukkit.inventory.meta.ItemMeta;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
-/** Click/drag/close glue for the altar sacrifice GUI. Enchantment extraction is the one place this
- * touches real Bukkit enchantment types, keeping {@link SacrificeValuationService} itself Bukkit-free. */
+/** Click/drag/close glue for the altar sacrifice GUI. Enchantment extraction and valuation is shared
+ * with the banishment prayer ritual via {@link SacrificeInputSupport}, keeping
+ * {@link SacrificeValuationService} itself Bukkit-free in exactly one place. */
 public final class AltarSacrificeGuiListener implements Listener {
-
-    private static final EnchantmentMaxLevelLookup MAX_LEVELS = key -> {
-        Enchantment enchantment = RegistryAccess.registryAccess().getRegistry(RegistryKey.ENCHANTMENT)
-                .get(NamespacedKey.fromString(key));
-        return enchantment == null ? 1 : enchantment.getMaxLevel();
-    };
 
     private final OathboundPlugin plugin;
 
     public AltarSacrificeGuiListener(OathboundPlugin plugin) {
         this.plugin = plugin;
-    }
-
-    /** Unlike {@link #MAX_LEVELS}, this needs config (the per-rarity multipliers), so it can't be a
-     * static field - built per call, capturing {@code plugin}. Buckets {@code Enchantment.getWeight()}
-     * via {@link EnchantmentRarityTier#of} rather than using the deprecated-for-removal
-     * {@code Enchantment.getRarity()}/{@code EnchantmentRarity}. */
-    private EnchantmentRarityLookup rarityLookup() {
-        return key -> {
-            Enchantment enchantment = RegistryAccess.registryAccess().getRegistry(RegistryKey.ENCHANTMENT)
-                    .get(NamespacedKey.fromString(key));
-            EnchantmentRarityTier tier = EnchantmentRarityTier.of(enchantment == null ? 10 : enchantment.getWeight());
-            return plugin.oathboundConfig().altarRarityMultiplier(tier);
-        };
     }
 
     @EventHandler
@@ -111,7 +79,7 @@ public final class AltarSacrificeGuiListener implements Listener {
             return;
         }
         if (event.getInventory().getHolder() instanceof AltarSacrificeHolder holder && !holder.isPosted()) {
-            returnDepositedItems(player, event.getInventory());
+            SacrificeInputSupport.returnDeposits(event.getInventory(), AltarSacrificeHolder.DEPOSIT_SLOTS_END_EXCLUSIVE, player);
         }
     }
 
@@ -124,32 +92,19 @@ public final class AltarSacrificeGuiListener implements Listener {
         }
 
         Inventory inventory = holder.getInventory();
-        for (int slot = 0; slot < AltarSacrificeHolder.DEPOSIT_SLOTS_END_EXCLUSIVE; slot++) {
-            ItemStack stack = inventory.getItem(slot);
-            if (stack != null && stack.getType() != Material.AIR && enchantmentsOf(stack).isEmpty()) {
-                player.sendMessage("Remove non-enchanted items first - only enchanted items count as artifacts.");
-                return;
-            }
+        if (SacrificeInputSupport.hasNonEnchantedItem(inventory, AltarSacrificeHolder.DEPOSIT_SLOTS_END_EXCLUSIVE)) {
+            player.sendMessage("Remove non-enchanted items first - only enchanted items count as artifacts.");
+            return;
         }
 
-        List<Map<String, Integer>> perItemEnchants = new ArrayList<>();
-        for (int slot = 0; slot < AltarSacrificeHolder.DEPOSIT_SLOTS_END_EXCLUSIVE; slot++) {
-            ItemStack stack = inventory.getItem(slot);
-            if (stack != null && stack.getType() != Material.AIR) {
-                perItemEnchants.add(enchantmentsOf(stack));
-            }
-        }
-
-        long sacrificeValue = SacrificeValuationService.valueOf(perItemEnchants, MAX_LEVELS, rarityLookup(),
-                plugin.oathboundConfig().altarEnchantmentWeightScale(), plugin.oathboundConfig().altarRepeatEnchantmentDecay());
+        long sacrificeValue = SacrificeInputSupport.valueOfDeposits(
+                inventory, AltarSacrificeHolder.DEPOSIT_SLOTS_END_EXCLUSIVE, plugin);
         if (sacrificeValue <= 0) {
             player.sendMessage("Deposit at least one enchanted item.");
             return;
         }
 
-        for (int slot = 0; slot < AltarSacrificeHolder.DEPOSIT_SLOTS_END_EXCLUSIVE; slot++) {
-            inventory.setItem(slot, null);
-        }
+        SacrificeInputSupport.clearDeposits(inventory, AltarSacrificeHolder.DEPOSIT_SLOTS_END_EXCLUSIVE);
 
         Instant now = Instant.now();
         int decayDays = plugin.oathboundConfig().altarDecayDays();
@@ -160,35 +115,5 @@ public final class AltarSacrificeGuiListener implements Listener {
         holder.markPosted();
         player.sendMessage("Sacrifice accepted - Altar Power is now " + newBaseline + ".");
         player.closeInventory();
-    }
-
-    private Map<String, Integer> enchantmentsOf(ItemStack stack) {
-        Map<Enchantment, Integer> enchantments;
-        ItemMeta meta = stack.getItemMeta();
-        if (meta instanceof EnchantmentStorageMeta storageMeta) {
-            enchantments = storageMeta.getStoredEnchants();
-        } else {
-            enchantments = stack.getEnchantments();
-        }
-        Map<String, Integer> byKey = new HashMap<>();
-        for (Map.Entry<Enchantment, Integer> entry : enchantments.entrySet()) {
-            byKey.put(entry.getKey().getKey().toString(), entry.getValue());
-        }
-        return byKey;
-    }
-
-    private void returnDepositedItems(Player player, Inventory inventory) {
-        for (int slot = 0; slot < AltarSacrificeHolder.DEPOSIT_SLOTS_END_EXCLUSIVE; slot++) {
-            ItemStack stack = inventory.getItem(slot);
-            if (stack != null && stack.getType() != Material.AIR) {
-                inventory.setItem(slot, null);
-                giveOrDrop(player, stack);
-            }
-        }
-    }
-
-    private void giveOrDrop(Player player, ItemStack stack) {
-        Map<Integer, ItemStack> leftover = player.getInventory().addItem(stack);
-        leftover.values().forEach(remaining -> player.getWorld().dropItemNaturally(player.getLocation(), remaining));
     }
 }

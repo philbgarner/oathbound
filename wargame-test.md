@@ -44,14 +44,16 @@ round knows what's already open, patched, or ruled "working as intended."
 | Fresh altars born at 0 Power (immediately Critical) | Round 1, pass 1 | **Patched** | `altar.starting-power: 150` grace baseline, commit `464da58` |
 | Enchantment weight formula misread as overvaluing single-level enchants | Round 1, pass 1 | Not a bug | Corrected same session: single-level enchants (Mending, Silk Touch) hit max value on the first copy by design, not overvalued |
 | Predatory `FULFILLED` oaths grant Honor to the exploiter too (fault-blind) | Round 1, pass 1 | **Open** | `fault-attribution-plan.md` currently scopes only the `BROKEN` side; a lopsided-but-"honestly"-fulfilled predatory oath isn't covered — flagged there as deliberately out of scope, needing its own design pass |
-| Diplomacy `WAR` is bookkeeping-only unless `pvp.restrict-to-declared-wars` is enabled | Round 1, pass 1 | Working as intended, but confusing to players | Consider a clearer in-world signal when the flag is off |
+| Diplomacy `WAR` is bookkeeping-only unless `pvp.restrict-to-declared-wars` is enabled | Round 1, pass 1 | **Patched** | Default flipped `false` → `true` (`config.yml`, `OathboundConfig.java` fallback) after Round 2 review - a sealed Peace/Alliance now means something mechanically out of the box |
 | Sub-Region/Kingdom groups have no diplomatic agency (bandwagon incentive) | Round 1, pass 1 | Working as intended (documented) | `docs/diplomacy.md`: only REGION/KINGDOM-tier roots hold relations |
 | Bounty payout goes to whoever turns in the head, not whoever landed the kill | Round 1, pass 1 | Working as intended (documented) | `docs/bounty-banishment.md` — deliberate, sidesteps kill-attribution entirely |
-| Reconsecration cooldown skipped on fresh/re-consecration (`cooldownUntil = consecratedAt`, not `+cooldown`) | Round 1, pass 2 | **Open — reconfirmed against source** | `altar/Altar.java:45`, `listener/AltarConsecrationListener.java:72-73` |
+| Reconsecration cooldown skipped on fresh/re-consecration (`cooldownUntil = consecratedAt`, not `+cooldown`) | Round 1, pass 2 | **Patched** | `Altar.java` gained a 6-arg constructor taking the initial cooldown; `AltarConsecrationListener` now passes `altar.reconsecration-cooldown-seconds` instead of leaving it at zero. `AltarTest` covers it directly. |
 | `welcome-pact` (any `CustomFlagClause`-only oath) auto-`FULFILLED`s instantly — free repeatable Honor | Round 1, pass 2 | **Open — reconfirmed against source** | `oath/ConditionEngine.java:98-99,142-145` — `CustomFlagClause` never sets `allAutoResolvableAndDone = false` |
 | Rarity multiplier widens rich/poor altar gap over the long run | Round 1, pass 2 | Working as intended, flagged to watch | `altar.enchantment-rarity-multiplier` |
 | Fault attribution missing for `BROKEN` oaths (Honor/curse hits every party) | Round 1 (both passes) | **Open, plan parked** | `fault-attribution-plan.md` |
 | Free mailbox-spam DoS: proposing an oath costs nothing, `pending-offer-cap-per-player` is per-recipient | Round 2 | **Open — new, verified against source** | `gui/OathBuilderListener.java:162-174`; a single trivial `CustomFlagClause` oath satisfies the "at least one clause" check for free, 10 of them lock out a recipient's inbox for up to `negotiation-expiry-days: 7` |
+| Ceremony confirm/decline was free-text phrase matching - an unrelated chat message equal to a phrase could accidentally seal a real oath (surfaced via an in-chat scenario this session, before Round 2 was saved: a newcomer stepping on a rigged pressure plate, then coincidentally typing "yes" to someone else) | Interim (this session) | **Patched** | `CeremonyTemplateDefinition` no longer has phrase fields; confirmation is a `ClickEvent.callback`-backed [Accept]/[Decline] prompt (`CeremonyChatListener`). Real-stakes templates also now get an item glint + lore warning (`bukkit/CeremonyItems.java`) and an ambient particle aura on bound trigger blocks (`OathboundPlugin.ambientCeremonyTriggerParticles`), via the new `CeremonyTemplateDefinition.hasRealStakes()`. |
+| Banishment stacking had no intervention path - two funded placers (or one, patient enough) could keep a target benched near-indefinitely with no mechanical recourse for their allies | Interim (this session) | **Patched (partial)** | Two release paths added, both driving `Banishment.reduceSentence` (previously an unused seam): an Oath-based `Clause.BanishmentReleaseClause` (`/oathbound-debug oath addbanishmentrelease`) and an altar-based prayer ritual (shift-right-click a barrel → `gui.BanishmentPrayerBoardGui`). **Not built:** an ongoing upkeep cost for the placer while a sentence is active - the user chose the release-oath direction only, not the "both" option; stacking cost still comes solely from `bounty.heat-fee-multiplier` at placement time. |
 
 ## Round history
 
@@ -171,3 +173,27 @@ Warden's attention on Marisol & Cade's complaint instead of on him.
 Three concrete, source-verified bugs came out of this round (Honor faucet, mailbox DoS, reconsecration-
 cooldown bypass) — all small, localized fixes. Good candidates for a single patch pass, the same shape as
 `464da58`, whenever that's wanted.
+
+### Patch pass — 2026-08-18 (same session)
+
+Before Round 2 above was run, an earlier in-chat (unsaved) narrative this session surfaced two more
+findings by the same method - a newcomer accidentally sealing a real oath by stepping on a rigged
+pressure plate and then coincidentally typing a confirm-phrase in unrelated chat, and a coordinated pair
+of bounty placers keeping a target banished with no mechanical recourse for their allies. Per user
+review, four fixes landed this session (not the reconsecration-cooldown bug found *by* Round 2 above,
+which is a separate, already-flagged item also patched now):
+
+1. `pvp.restrict-to-declared-wars` default flipped `false` → `true` - a sealed Peace/Alliance now blocks
+   PvP out of the box, following [Civcraft/CivClassic precedent](https://civilizationcraft.gamepedia.com/Diplomacy)
+   where diplomacy states carry real mechanical weight, not just bookkeeping.
+2. Reconsecration cooldown bug (see ledger above) - patched.
+3. Two banishment release paths added (see ledger above) - the Oath-based path is a direct build-out of
+   the master plan's own parked "release oath" hook; the altar-prayer path was the user's addition,
+   loosely modeled on [Civcraft's Prison Pearl](https://github.com/pruby/PrisonPearl), where an
+   imprisoned player's allies have a real, contestable intervention path rather than a pure timer.
+4. Ceremony confirm/decline rebuilt as a clickable prompt, plus item-glint and trigger-block particle
+   warnings for any template with real mechanical stakes (see ledger above).
+
+Deliberately **not** built this pass: an ongoing upkeep cost for sustaining a banishment sentence (the
+"both" option offered alongside the release oath), and the still-open Honor-faucet/mailbox-DoS findings
+from Round 2 itself.

@@ -155,6 +155,12 @@ banishment:
   # (never resets it), but the total duration measured from when the sentence first began can never
   # exceed this many hours - further stacking beyond the cap is absorbed.
   stack-cap-hours: 168
+  # Hours cut from a banished player's remaining sentence per point of enchanted-item sacrifice value,
+  # via the "pray for intercession" ritual at any consecrated (non-Critical) altar - shift+right-click the
+  # barrel to open the ritual instead of the normal sacrifice screen. Same currency and valuation as a
+  # normal Power sacrifice (altar.enchantment-weight-scale etc.), spent on a different ledger. A large
+  # enough sacrifice can pardon the remaining sentence outright.
+  prayer-hours-per-power: 0.2
   # Fixed destination for the purpose-built End banishment pen - build it by hand (contained, safe from
   # Endermen/void, basic survival amenities), then run /oathbound-debug banishment set-pen while standing
   # at the release point to record these coordinates instead of editing them by hand.
@@ -183,11 +189,12 @@ pve-contracts: []
 # right-click, no menus or commands. Give the item via
 # /oathbound-debug ceremony give <templateId> <groupId> [player] - the group id is the liege
 # ProtectionGroup territory reverts to, so the same template can be reused by any liege for any of
-# their own groups. Right-clicking another player with the item speaks 'dialogue' to them; replying
-# with one of 'confirm-phrases' seals and activates the oath immediately. The same item can instead be
-# right-clicked onto an already-placed pressure plate or push/lever button to bind the ceremony there -
-# any player who steps on/presses it afterwards is prompted as if the binder had right-clicked them, and
-# the binder doesn't need to be online for the trigger to fire (only to seal it via chat afterwards).
+# their own groups. Right-clicking another player with the item speaks 'dialogue' to them, ending in a
+# clickable [Accept]/[Decline] prompt that seals and activates the oath immediately on Accept - there is
+# no free-text reply to configure or misfire. The same item can instead be right-clicked onto an
+# already-placed pressure plate or push/lever button to bind the ceremony there - any player who steps
+# on/presses it afterwards is prompted as if the binder had right-clicked them, and the binder doesn't
+# need to be online for the trigger to fire (only to be online when the target clicks Accept).
 #
 # Ships with one live default, 'welcome-pact': a zero-mechanical-stakes onboarding pledge (no transfer,
 # tribute, escrow, or diplomacy clause - just an RP-only custom flag) safe to hand to a new player via
@@ -203,8 +210,6 @@ ceremony-templates:
       - "{initiator} offers you a place among these lands, {target}."
       - "Swear only to keep the peace here - nothing more is asked of you."
       - "Do you accept?"
-    confirm-phrases: ["i do", "yes", "i accept"]
-    decline-phrases: ["no", "i decline"]
     prompt-timeout-seconds: 60
     blood-oath: false
     clauses:
@@ -227,8 +232,6 @@ ceremony-block-triggers-enabled: true
 #       - "Swear alliance: your house stands with the Crown against its enemies."
 #       - "Swear a hunt: bring low the Ravager that haunts the eastern woods."
 #       - "Do you agree?"
-#     confirm-phrases: ["i do", "yes", "i swear it"]
-#     decline-phrases: ["no", "i refuse"]
 #     prompt-timeout-seconds: 60
 #     blood-oath: false
 #     clauses:
@@ -262,9 +265,10 @@ diplomacy:
 
 pvp:
   # If true, two players can only deal PvP damage to each other when their groups' resolved root
-  # relation is WAR. Players not in any group are always protected when this is on. Off by default so
-  # existing/testing servers aren't surprised by PvP locking up before any kingdoms or wars exist.
-  restrict-to-declared-wars: false
+  # relation is WAR. Players not in any group are always protected when this is on. On by default -
+  # a sealed Peace/Alliance treaty (or simply never having declared war) should actually mean something
+  # mechanically, not just cosmetically. Set to false to restore free-for-all PvP regardless of relations.
+  restrict-to-declared-wars: true
 
 villagers:
   # Each role's shop NPCs all share one fixed buy/sell list, edited here - not a per-instance builder.

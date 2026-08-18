@@ -8,6 +8,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class AltarTest {
 
@@ -49,5 +51,33 @@ final class AltarTest {
 
         Instant fullyDecayed = consecratedAt.plus(Duration.ofDays(5));
         assertEquals(0L, altar.currentPower(fullyDecayed, 5));
+    }
+
+    @Test
+    void fiveArgConstructorHasNoReconsecrationCooldown() {
+        Altar altar = new Altar(UUID.randomUUID(), owner, location, consecratedAt, 150L);
+
+        assertTrue(altar.cooledDown(consecratedAt));
+    }
+
+    @Test
+    void sixArgConstructorSeedsTheReconsecrationCooldown() {
+        Duration cooldown = Duration.ofSeconds(300);
+        Altar altar = new Altar(UUID.randomUUID(), owner, location, consecratedAt, 150L, cooldown);
+
+        assertFalse(altar.cooledDown(consecratedAt));
+        assertFalse(altar.cooledDown(consecratedAt.plusSeconds(299)));
+        assertTrue(altar.cooledDown(consecratedAt.plusSeconds(300)));
+    }
+
+    @Test
+    void raidRazeReplaceNoLongerGrantsInstantProtection() {
+        // A raider destroys a Critical altar (Desecration hard-resets Power and deletes the record) and
+        // immediately rebuilds barrel+capstone+candle on the same spot - this is exactly that rebuild.
+        Duration cooldown = Duration.ofSeconds(300);
+        Altar rebuilt = new Altar(UUID.randomUUID(), owner, location, consecratedAt, 150L, cooldown);
+
+        assertFalse(rebuilt.cooledDown(consecratedAt),
+                "a freshly (re)consecrated altar must not bypass the reconsecration cooldown");
     }
 }

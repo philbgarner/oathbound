@@ -8,6 +8,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -35,6 +36,13 @@ public final class CeremonyItems {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         meta.setDisplayName(template.itemDisplayName());
+        if (template.hasRealStakes()) {
+            // A shimmer and an explicit warning distinguish a real-stakes item from a welcome-pact-style
+            // zero-mechanical-stakes one before anyone right-clicks a player or a pressure plate with it -
+            // see CeremonyTemplateDefinition.hasRealStakes for what this is guarding against.
+            meta.setEnchantmentGlintOverride(true);
+            meta.setLore(List.of("This carries real, binding terms -", "read the ceremony before you use it."));
+        }
         meta.getPersistentDataContainer().set(templateKey(plugin), PersistentDataType.STRING, template.id());
         meta.getPersistentDataContainer().set(liegeGroupKey(plugin), PersistentDataType.STRING, liegeGroupId.toString());
         item.setItemMeta(meta);

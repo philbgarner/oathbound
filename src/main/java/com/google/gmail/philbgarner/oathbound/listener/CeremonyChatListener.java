@@ -11,8 +11,10 @@ import com.google.gmail.philbgarner.oathbound.group.ProtectionGroupRef;
 import com.google.gmail.philbgarner.oathbound.oath.Clause;
 import com.google.gmail.philbgarner.oathbound.oath.Oath;
 import com.google.gmail.philbgarner.oathbound.oath.SerializedItemStack;
-import io.papermc.paper.event.player.AsyncChatEvent;
-import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
@@ -30,12 +32,14 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * The "reply I do / Yes to accept" half of the Ceremony Designer, mirroring the chat-intercept pattern
- * {@code OathDraftPromptListener}/{@code OathBuilderListener} already use elsewhere - the target's next
- * chat message is checked against the template's confirm/decline phrases rather than treated as a free
- * text field. A confirm materializes and seals the oath in one atomic step (both parties already
- * consented via the physical ceremony), a decline or an expired prompt clears the pending state without
- * creating anything.
+ * The "click Accept / Decline to respond" half of the Ceremony Designer. Confirmation is a clickable chat
+ * prompt (Adventure {@code ClickEvent.callback}) rather than free-text phrase matching - the earlier
+ * design checked the target's next chat message against configured phrases, which meant an unrelated
+ * message that happened to equal one (a bare "yes" answering someone else's question, sent while a prompt
+ * happened to be pending) could accidentally seal a real, possibly high-stakes oath. A click can't misfire
+ * that way. A confirm materializes and seals the oath in one atomic step (both parties already consented
+ * via the physical ceremony), a decline or an expired prompt clears the pending state without creating
+ * anything.
  */
 public final class CeremonyChatListener implements Listener {
 
@@ -57,7 +61,7 @@ public final class CeremonyChatListener implements Listener {
     /** Same as {@link #beginPrompt(Player, Player, CeremonyTemplateDefinition, UUID)} but the initiator
      * need not currently be online - used by a bound pressure-plate/button trigger, where the liege who
      * installed it may be offline when someone else steps on it. Confirmation still requires the
-     * initiator to be online by the time {@code target} replies (see {@link #handleConfirm}). */
+     * initiator to be online by the time {@code target} clicks Accept (see {@link #handleConfirm}). */
     public void beginPrompt(UUID initiatorId, String initiatorName, Player target, CeremonyTemplateDefinition template,
                              UUID liegeGroupId) {
         if (pending.containsKey(target.getUniqueId())) {
@@ -68,10 +72,12 @@ public final class CeremonyChatListener implements Listener {
             return;
         }
         Instant expiresAt = Instant.now().plusSeconds(template.promptTimeoutSeconds());
-        pending.put(target.getUniqueId(), new PendingCeremony(template, initiatorId, liegeGroupId, expiresAt));
+        PendingCeremony ceremony = new PendingCeremony(template, initiatorId, liegeGroupId, expiresAt);
+        pending.put(target.getUniqueId(), ceremony);
         for (String line : template.dialogueLines()) {
             target.sendMessage(line.replace("{initiator}", initiatorName).replace("{target}", target.getName()));
         }
+        target.sendMessage(respondPrompt(target.getUniqueId(), ceremony));
         Player initiator = Bukkit.getPlayer(initiatorId);
         if (initiator != null) {
             initiator.sendMessage("You have begun the '" + template.displayName() + "' ceremony with " + target.getName() + ".");
@@ -85,32 +91,31 @@ public final class CeremonyChatListener implements Listener {
         return pending.containsKey(playerId);
     }
 
-    @EventHandler
-    public void onChat(AsyncChatEvent event) {
-        Player player = event.getPlayer();
-        PendingCeremony ceremony = pending.get(player.getUniqueId());
-        if (ceremony == null) {
-            return;
-        }
-        if (Instant.now().isAfter(ceremony.expiresAt())) {
-            pending.remove(player.getUniqueId());
-            return;
-        }
+    private Component respondPrompt(UUID targetId, PendingCeremony ceremony) {
+        Component accept = Component.text("[Accept]", NamedTextColor.GREEN, TextDecoration.BOLD)
+                .clickEvent(ClickEvent.callback(audience -> resolvePending(targetId, ceremony, true)));
+        Component decline = Component.text("[Decline]", NamedTextColor.RED, TextDecoration.BOLD)
+                .clickEvent(ClickEvent.callback(audience -> resolvePending(targetId, ceremony, false)));
+        return Component.text("Click to respond: ").append(accept).append(Component.text("   ")).append(decline);
+    }
 
-        String text = PlainTextComponentSerializer.plainText().serialize(event.message()).trim();
-        boolean confirmed = ceremony.template().confirmPhrases().stream().anyMatch(text::equalsIgnoreCase);
-        boolean declined = !confirmed && ceremony.template().declinePhrases().stream().anyMatch(text::equalsIgnoreCase);
-        if (!confirmed && !declined) {
+    /** {@code pending.remove(targetId, ceremony)} is a compare-and-remove: it only succeeds if this exact
+     * ceremony instance is still the one pending for {@code targetId}, so a stale button (already
+     * answered, expired and replaced by a newer prompt, or scrolled back to in chat history) is a no-op
+     * rather than resolving - or worse, resolving - a different ceremony than the one it was rendered for. */
+    private void resolvePending(UUID targetId, PendingCeremony ceremony, boolean confirmed) {
+        if (!pending.remove(targetId, ceremony) || Instant.now().isAfter(ceremony.expiresAt())) {
             return;
         }
-
-        event.setCancelled(true);
-        pending.remove(player.getUniqueId());
+        Player target = Bukkit.getPlayer(targetId);
+        if (target == null) {
+            return;
+        }
         Bukkit.getScheduler().runTask(plugin, () -> {
-            if (declined) {
-                handleDecline(player, ceremony);
+            if (confirmed) {
+                handleConfirm(target, ceremony);
             } else {
-                handleConfirm(player, ceremony);
+                handleDecline(target, ceremony);
             }
         });
     }

@@ -58,6 +58,25 @@ flowchart TD
     Elapsed -->|no| Hold
 ```
 
+## Release paths
+
+A sentence is no longer a pure fire-and-forget timer - two independent ways to shorten or forgive one
+exist, both driving the same `Banishment.reduceSentence` seam:
+
+```mermaid
+flowchart TD
+    Sentence["Active Banishment"] --> ReleaseOath["Oath-based: an ally negotiates\nwith whoever holds authority over\nthe sentence via a normal Oath\ncarrying a BanishmentReleaseClause\n(target, reduction/fullRelease, condition) -\n/oathbound-debug oath addbanishmentrelease"]
+    Sentence --> Prayer["Altar-based: shift-right-click any\nNORMAL/DECAYING barrel, pick the target\nfrom the Altar of Intercession board,\nsacrifice enchanted items - value converts\nto hours via banishment.prayer-hours-per-power\n(see Altars doc)"]
+    ReleaseOath --> Reduce["ConditionEngine.executeBanishmentRelease\nonce the clause's condition resolves"]
+    Prayer --> Reduce
+    Reduce --> Clamp["Banishment.reduceSentence:\nnever goes before 'now' - a large\nenough reduction ends it immediately"]
+```
+
+The release oath reuses the normal propose/seal handshake for consent (the placer has to actually agree
+to the terms of whatever the ally offers), same as a `DiplomacyClause` treaty; the prayer ritual needs no
+one's consent at all, just a big enough sacrifice - the two are deliberately different in that respect,
+mirroring how a treaty requires mutual agreement but a sacrifice at an altar doesn't.
+
 ## PvE contracts (separate, no attribution problem)
 
 ```mermaid
@@ -81,4 +100,7 @@ flowchart LR
 `bounty/Bounty.java`, `bounty/BountyService.java`, `bounty/HeatCalculator.java`,
 `bounty/BountyTargeting.java`, `bounty/Banishment.java`, `bounty/BanishmentService.java`,
 `bounty/BanishmentSweepService.java`, `bounty/BountyAbandonmentSweepService.java`,
-`bounty/PveContractService.java`.
+`bounty/PveContractService.java`, `oath/Clause.java` (`BanishmentReleaseClause`),
+`oath/ConditionEngine.java` (`executeBanishmentRelease`), `command/OathboundDebugCommand.java`
+(`addbanishmentrelease`), `gui/BanishmentPrayerBoardGui.java`, `gui/PrayerAltarGui.java`,
+`gui/BanishmentPrayerGuiListener.java`.

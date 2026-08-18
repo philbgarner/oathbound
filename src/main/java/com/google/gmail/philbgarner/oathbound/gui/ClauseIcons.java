@@ -36,6 +36,10 @@ final class ClauseIcons {
                     "Groups: " + groupName(diplomacy.groupA(), groupCache) + " <-> " + groupName(diplomacy.groupB(), groupCache),
                     "Becomes: " + diplomacy.newState());
             case Clause.EscrowClause escrow -> GuiItems.button(Material.CHEST, "Escrow", "(not supported here)");
+            case Clause.BanishmentReleaseClause release -> GuiItems.button(Material.ENDER_PEARL, "Banishment Release",
+                    "Target: " + playerName(release.target()),
+                    release.fullRelease() ? "Forgives the entire remaining sentence"
+                            : "Reduces sentence by " + release.reduction().toHours() + "h");
         };
     }
 

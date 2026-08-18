@@ -210,6 +210,6 @@ final class CeremonyServiceTest {
 
     private CeremonyTemplateDefinition template(CeremonyClauseSpec... clauses) {
         return new CeremonyTemplateDefinition("fealty", "Oath of Fealty", "NETHERITE_SWORD", "Scepter of Avalon",
-                List.of("Do you agree?"), List.of("i do", "yes"), List.of("no"), 60, false, List.of(clauses));
+                List.of("Do you agree?"), 60, false, List.of(clauses));
     }
 }

@@ -52,9 +52,9 @@ flowchart TD
     SetWar --> Persist["DiplomaticRelation persisted -\ngroupA/groupB canonically sorted\nso a pair never double-stores"]
     SetTreaty --> Persist
 
-    Persist --> PvpFlag{"pvp.restrict-to-declared-wars\nenabled? (default false)"}
+    Persist --> PvpFlag{"pvp.restrict-to-declared-wars\nenabled? (default true)"}
     PvpFlag -->|yes| PvpGuard["DiplomaticPvpGuardListener:\nPvP damage between two players only\nallowed if their groups' root relation\nis WAR. Groupless players always protected."]
-    PvpFlag -->|no| NoEffect[Relation is informational only today]
+    PvpFlag -->|no| NoEffect[Relation is informational only if\nan admin opts back out]
 ```
 
 ## Notes

@@ -89,6 +89,7 @@ public final class OathboundConfig {
     private final long banishmentMaxHours;
     private final long banishmentHoursPerCurrencyUnit;
     private final long banishmentStackCapHours;
+    private final double banishmentPrayerHoursPerPower;
     private final BanishmentPenSpec banishmentPen;
     private final List<PveContractDefinition> pveContracts;
     private final List<CeremonyTemplateDefinition> ceremonyTemplates;
@@ -116,6 +117,7 @@ public final class OathboundConfig {
                              Duration bountyBreachDiscountWindow, double bountyBreachDiscountFraction,
                              Duration bountyAbandonInactivityThreshold, long banishmentMinHours, long banishmentMaxHours,
                              long banishmentHoursPerCurrencyUnit, long banishmentStackCapHours,
+                             double banishmentPrayerHoursPerPower,
                              BanishmentPenSpec banishmentPen, List<PveContractDefinition> pveContracts,
                              List<CeremonyTemplateDefinition> ceremonyTemplates, long diplomacyBetrayalHonorPenalty,
                              boolean pvpRestrictToDeclaredWars, boolean ceremonyBlockTriggersEnabled) {
@@ -163,6 +165,7 @@ public final class OathboundConfig {
         this.banishmentMaxHours = banishmentMaxHours;
         this.banishmentHoursPerCurrencyUnit = banishmentHoursPerCurrencyUnit;
         this.banishmentStackCapHours = banishmentStackCapHours;
+        this.banishmentPrayerHoursPerPower = banishmentPrayerHoursPerPower;
         this.banishmentPen = banishmentPen;
         this.pveContracts = pveContracts;
         this.ceremonyTemplates = ceremonyTemplates;
@@ -296,6 +299,7 @@ public final class OathboundConfig {
         long banishmentMaxHours = config.getLong("banishment.max-hours", 72L);
         long banishmentHoursPerCurrencyUnit = config.getLong("banishment.hours-per-currency-unit", 50L);
         long banishmentStackCapHours = config.getLong("banishment.stack-cap-hours", 168L);
+        double banishmentPrayerHoursPerPower = config.getDouble("banishment.prayer-hours-per-power", 0.2);
         BanishmentPenSpec banishmentPen = new BanishmentPenSpec(
                 config.getString("banishment.pen.world", "world_the_end"),
                 config.getDouble("banishment.pen.x", 0.5),
@@ -307,7 +311,7 @@ public final class OathboundConfig {
         List<PveContractDefinition> pveContracts = parsePveContracts(config.getMapList("pve-contracts"));
         List<CeremonyTemplateDefinition> ceremonyTemplates = parseCeremonyTemplates(config.getMapList("ceremony-templates"));
         long diplomacyBetrayalHonorPenalty = config.getLong("diplomacy.betrayal-honor-penalty", 20L);
-        boolean pvpRestrictToDeclaredWars = config.getBoolean("pvp.restrict-to-declared-wars", false);
+        boolean pvpRestrictToDeclaredWars = config.getBoolean("pvp.restrict-to-declared-wars", true);
         boolean ceremonyBlockTriggersEnabled = config.getBoolean("ceremony-block-triggers-enabled", true);
 
         return new OathboundConfig(dataFolder.resolve(sqliteFileName), depthCutoff, currencies,
@@ -323,6 +327,7 @@ public final class OathboundConfig {
                 bountyFeeBase, bountyHeatFeeMultiplier, bountyHeatDecayWindow, bountyMaxPlacementsPer24h,
                 bountyBreachDiscountWindow, bountyBreachDiscountFraction, bountyAbandonInactivityThreshold,
                 banishmentMinHours, banishmentMaxHours, banishmentHoursPerCurrencyUnit, banishmentStackCapHours,
+                banishmentPrayerHoursPerPower,
                 banishmentPen, pveContracts, ceremonyTemplates, diplomacyBetrayalHonorPenalty,
                 pvpRestrictToDeclaredWars, ceremonyBlockTriggersEnabled);
     }
@@ -364,14 +369,12 @@ public final class OathboundConfig {
             }
             String itemDisplayName = String.valueOf(entry.get("item-display-name"));
             List<String> dialogue = stringList(entry.get("dialogue"));
-            List<String> confirmPhrases = stringList(entry.get("confirm-phrases"));
-            List<String> declinePhrases = stringList(entry.get("decline-phrases"));
             int promptTimeoutSeconds = entry.containsKey("prompt-timeout-seconds")
                     ? ((Number) entry.get("prompt-timeout-seconds")).intValue() : 60;
             boolean bloodOath = Boolean.TRUE.equals(entry.get("blood-oath"));
             List<CeremonyClauseSpec> clauses = parseCeremonyClauses(rawMapList(entry.get("clauses")));
             result.add(new CeremonyTemplateDefinition(id, displayName, itemMaterialName, itemDisplayName,
-                    dialogue, confirmPhrases, declinePhrases, promptTimeoutSeconds, bloodOath, clauses));
+                    dialogue, promptTimeoutSeconds, bloodOath, clauses));
         }
         return result;
     }
@@ -622,6 +625,10 @@ public final class OathboundConfig {
 
     public long banishmentStackCapHours() {
         return banishmentStackCapHours;
+    }
+
+    public double banishmentPrayerHoursPerPower() {
+        return banishmentPrayerHoursPerPower;
     }
 
     public BanishmentPenSpec banishmentPen() {
