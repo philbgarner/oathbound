@@ -1,5 +1,7 @@
 package com.google.gmail.philbgarner.oathbound.ceremony;
 
+import com.google.gmail.philbgarner.oathbound.group.GroupTier;
+import com.google.gmail.philbgarner.oathbound.group.OwnershipResolver;
 import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroupRef;
@@ -12,6 +14,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -26,9 +30,11 @@ import java.util.function.Supplier;
 public final class CeremonyService {
 
     private final Supplier<Collection<ProtectionGroup>> allGroups;
+    private final OwnershipResolver ownershipResolver;
 
-    public CeremonyService(Supplier<Collection<ProtectionGroup>> allGroups) {
+    public CeremonyService(Supplier<Collection<ProtectionGroup>> allGroups, OwnershipResolver ownershipResolver) {
         this.allGroups = Objects.requireNonNull(allGroups, "allGroups");
+        this.ownershipResolver = Objects.requireNonNull(ownershipResolver, "ownershipResolver");
     }
 
     /** The sole {@link ProtectionGroup} {@code target} personally owns directly (not via an owner chain,
@@ -89,8 +95,37 @@ public final class CeremonyService {
                 case CeremonyClauseSpec.MobKillSpec mobKill ->
                         new Clause.MobKillClause(target, mobKill.mobTypeName(), mobKill.quantity());
                 case CeremonyClauseSpec.CustomFlagSpec customFlag -> new Clause.CustomFlagClause(customFlag.text());
+                case CeremonyClauseSpec.DiplomacySpec diplomacy -> {
+                    if (subjectGroup == null) {
+                        throw new CeremonyValidationException("No territory group resolved for a diplomacy clause.");
+                    }
+                    requireDiplomaticTier(liegeGroup, "The liege group");
+                    requireDiplomaticTier(subjectGroup, "Their own territory group");
+                    yield new Clause.DiplomacyClause(liegeGroup, subjectGroup, diplomacy.newState(),
+                            new Condition.Immediate());
+                }
             });
         }
         return clauses;
+    }
+
+    /** Mirrors the same REGION/KINGDOM-only restriction {@code OathboundDebugCommand}'s diplomacy
+     * commands enforce - diplomatic relations only make sense between senior-most groups, and a
+     * ceremony's target-resolved territory group is often a minor, Individual-tier vassal rather than
+     * a Kingdom itself. Checked against the *root* of each chain, same as {@code DiplomacyService}
+     * itself resolves at execution time - a minor group nested under a Kingdom is fine, an unowned
+     * standalone Individual group is not. */
+    private void requireDiplomaticTier(ProtectionGroupRef groupRef, String label) {
+        ProtectionGroupRef rootRef = ownershipResolver.resolveRootGroup(groupRef);
+        ProtectionGroup root = findGroup(rootRef.groupId())
+                .orElseThrow(() -> new CeremonyValidationException("Could not resolve a root group for diplomacy."));
+        if (root.tier() != GroupTier.REGION && root.tier() != GroupTier.KINGDOM) {
+            throw new CeremonyValidationException(label + "'s senior-most group (" + root.name() + ") is only "
+                    + root.tier() + " tier - only REGION/KINGDOM-tier groups can participate in diplomacy.");
+        }
+    }
+
+    private Optional<ProtectionGroup> findGroup(UUID groupId) {
+        return allGroups.get().stream().filter(group -> group.id().equals(groupId)).findFirst();
     }
 }

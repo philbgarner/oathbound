@@ -3,6 +3,7 @@ package com.google.gmail.philbgarner.oathbound.config;
 import com.google.gmail.philbgarner.oathbound.bounty.PveContractDefinition;
 import com.google.gmail.philbgarner.oathbound.ceremony.CeremonyClauseSpec;
 import com.google.gmail.philbgarner.oathbound.ceremony.CeremonyTemplateDefinition;
+import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticState;
 import com.google.gmail.philbgarner.oathbound.economy.Currency;
 import com.google.gmail.philbgarner.oathbound.group.GroupTier;
 import com.google.gmail.philbgarner.oathbound.honor.HonorTiers;
@@ -378,6 +379,16 @@ public final class OathboundConfig {
                     yield new CeremonyClauseSpec.MobKillSpec(mobTypeName, ((Number) entry.get("quantity")).intValue());
                 }
                 case "custom-flag" -> new CeremonyClauseSpec.CustomFlagSpec(String.valueOf(entry.get("text")));
+                case "diplomacy" -> {
+                    String stateName = String.valueOf(entry.get("state"));
+                    DiplomaticState diplomaticState;
+                    try {
+                        diplomaticState = DiplomaticState.valueOf(stateName.toUpperCase());
+                    } catch (IllegalArgumentException e) {
+                        throw new IllegalArgumentException("Unknown ceremony-templates diplomacy state: " + stateName, e);
+                    }
+                    yield new CeremonyClauseSpec.DiplomacySpec(diplomaticState);
+                }
                 default -> throw new IllegalArgumentException("Unknown ceremony-templates clause type: " + type);
             });
         }

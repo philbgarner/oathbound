@@ -147,7 +147,8 @@ public final class CeremonyChatListener implements Listener {
         PlayerRef targetRef = new PlayerRef(target.getUniqueId());
 
         ProtectionGroupRef subjectGroupRef = null;
-        boolean needsSubjectGroup = template.clauses().stream().anyMatch(spec -> spec instanceof CeremonyClauseSpec.TransferSpec);
+        boolean needsSubjectGroup = template.clauses().stream().anyMatch(spec ->
+                spec instanceof CeremonyClauseSpec.TransferSpec || spec instanceof CeremonyClauseSpec.DiplomacySpec);
         if (needsSubjectGroup) {
             try {
                 subjectGroupRef = plugin.ceremonyService().resolveSubjectGroup(targetRef);

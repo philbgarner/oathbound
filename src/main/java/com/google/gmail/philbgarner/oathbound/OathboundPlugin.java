@@ -231,7 +231,7 @@ public final class OathboundPlugin extends JavaPlugin {
         bountyAbandonmentSweepService = new BountyAbandonmentSweepService();
         bountyPlacementListener = new BountyPlacementListener(this);
         pveContractService = new PveContractService(economyService);
-        ceremonyService = new CeremonyService(groupCache::values);
+        ceremonyService = new CeremonyService(groupCache::values, ownershipResolver);
         ceremonyChatListener = new CeremonyChatListener(this);
 
         loadExistingState();

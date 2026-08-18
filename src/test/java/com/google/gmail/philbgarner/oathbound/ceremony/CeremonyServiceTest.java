@@ -5,6 +5,8 @@ import com.google.gmail.philbgarner.oathbound.group.GroupTier;
 import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroupRef;
+import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticState;
+import com.google.gmail.philbgarner.oathbound.group.OwnershipResolver;
 import com.google.gmail.philbgarner.oathbound.oath.Clause;
 import com.google.gmail.philbgarner.oathbound.oath.Condition;
 import com.google.gmail.philbgarner.oathbound.oath.SerializedItemStack;
@@ -25,10 +27,16 @@ final class CeremonyServiceTest {
     private final PlayerRef vassal = new PlayerRef(UUID.randomUUID());
     private final PlayerRef otherRecipient = new PlayerRef(UUID.randomUUID());
     private final List<ProtectionGroup> groups = new ArrayList<>();
-    private final CeremonyService service = new CeremonyService(() -> groups);
+    private final OwnershipResolver ownershipResolver = new OwnershipResolver(
+            id -> groups.stream().filter(group -> group.id().equals(id)).findFirst(), 10);
+    private final CeremonyService service = new CeremonyService(() -> groups, ownershipResolver);
 
     private ProtectionGroup group(EntityRef owner) {
-        ProtectionGroup group = new ProtectionGroup(UUID.randomUUID(), "Territory", owner, GroupTier.INDIVIDUAL);
+        return group(owner, GroupTier.INDIVIDUAL);
+    }
+
+    private ProtectionGroup group(EntityRef owner, GroupTier tier) {
+        ProtectionGroup group = new ProtectionGroup(UUID.randomUUID(), "Territory", owner, tier);
         groups.add(group);
         return group;
     }
@@ -127,6 +135,67 @@ final class CeremonyServiceTest {
 
         assertEquals(1, clauses.size());
         assertEquals(new Clause.MobKillClause(vassal, "RAVAGER", 1), clauses.get(0));
+    }
+
+    @Test
+    void materializeBuildsADiplomacyClauseGatedOnImmediate() {
+        CeremonyTemplateDefinition template = template(new CeremonyClauseSpec.DiplomacySpec(DiplomaticState.ALLIANCE));
+        ProtectionGroup liegeKingdom = group(king, GroupTier.KINGDOM);
+        ProtectionGroup subjectKingdom = group(vassal, GroupTier.KINGDOM);
+        ProtectionGroupRef liege = new ProtectionGroupRef(liegeKingdom.id());
+        ProtectionGroupRef subject = new ProtectionGroupRef(subjectKingdom.id());
+
+        List<Clause> clauses = service.materialize(template, vassal, liege, subject, Map.of(), name -> null);
+
+        assertEquals(1, clauses.size());
+        Clause.DiplomacyClause diplomacy = (Clause.DiplomacyClause) clauses.get(0);
+        assertEquals(liege, diplomacy.groupA());
+        assertEquals(subject, diplomacy.groupB());
+        assertEquals(DiplomaticState.ALLIANCE, diplomacy.newState());
+        assertEquals(new Condition.Immediate(), diplomacy.condition());
+    }
+
+    @Test
+    void materializeThrowsWhenADiplomacyClauseHasNoSubjectGroup() {
+        CeremonyTemplateDefinition template = template(new CeremonyClauseSpec.DiplomacySpec(DiplomaticState.WAR));
+        ProtectionGroup liegeKingdom = group(king, GroupTier.KINGDOM);
+
+        assertThrows(CeremonyValidationException.class, () -> service.materialize(template, vassal,
+                new ProtectionGroupRef(liegeKingdom.id()), null, Map.of(), name -> null));
+    }
+
+    @Test
+    void materializeThrowsWhenTheSubjectGroupIsBelowRegionTier() {
+        CeremonyTemplateDefinition template = template(new CeremonyClauseSpec.DiplomacySpec(DiplomaticState.PEACE));
+        ProtectionGroup liegeKingdom = group(king, GroupTier.KINGDOM);
+        ProtectionGroup subjectTerritory = group(vassal, GroupTier.INDIVIDUAL); // not nested under a Region/Kingdom
+        ProtectionGroupRef liege = new ProtectionGroupRef(liegeKingdom.id());
+        ProtectionGroupRef subject = new ProtectionGroupRef(subjectTerritory.id());
+
+        assertThrows(CeremonyValidationException.class,
+                () -> service.materialize(template, vassal, liege, subject, Map.of(), name -> null));
+    }
+
+    @Test
+    void materializeResolvesDiplomacyThroughAVassalChainToItsKingdomRoot() {
+        CeremonyTemplateDefinition template = template(new CeremonyClauseSpec.DiplomacySpec(DiplomaticState.WAR));
+        ProtectionGroup liegeKingdom = group(king, GroupTier.KINGDOM);
+        ProtectionGroup subjectKingdom = group(otherRecipient, GroupTier.KINGDOM);
+        // vassal's directly-owned territory is nested under subjectKingdom, so diplomacy should resolve
+        // to subjectKingdom's root, not the Individual-tier group itself.
+        ProtectionGroup subjectTerritory = group(new ProtectionGroupRef(subjectKingdom.id()));
+        ProtectionGroupRef liege = new ProtectionGroupRef(liegeKingdom.id());
+        ProtectionGroupRef subject = new ProtectionGroupRef(subjectTerritory.id());
+
+        List<Clause> clauses = service.materialize(template, vassal, liege, subject, Map.of(), name -> null);
+
+        assertEquals(1, clauses.size());
+        assertEquals(subject, ((Clause.DiplomacyClause) clauses.get(0)).groupB());
+    }
+
+    @Test
+    void diplomacySpecRejectsNeutral() {
+        assertThrows(IllegalArgumentException.class, () -> new CeremonyClauseSpec.DiplomacySpec(DiplomaticState.NEUTRAL));
     }
 
     @Test

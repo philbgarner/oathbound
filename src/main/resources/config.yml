@@ -186,6 +186,7 @@ ceremony-block-triggers-enabled: true
 #       - "By this blade, {initiator} calls you to kneel, {target}."
 #       - "Swear fealty: your land answers to the Crown should you fall in battle five times."
 #       - "Swear tribute: wheat to Alaric, logs to Bryn."
+#       - "Swear alliance: your house stands with the Crown against its enemies."
 #       - "Swear a hunt: bring low the Ravager that haunts the eastern woods."
 #       - "Do you agree?"
 #     confirm-phrases: ["i do", "yes", "i swear it"]
@@ -203,6 +204,13 @@ ceremony-block-triggers-enabled: true
 #         recipient: Bryn
 #         material: OAK_LOG
 #         quantity: 64
+#       # Sets the diplomatic relation between the liege group (the "groupId" passed to
+#       # /oathbound-debug ceremony give) and the target's own personally-owned territory group to
+#       # ALLIANCE, the moment this oath activates. Both sides resolve to the root of their ownership
+#       # chain, so this still lands correctly even if the target's own group is a minor vassal.
+#       # Valid states: war, peace, alliance (not neutral - there's nothing to "declare" back to it).
+#       - type: diplomacy
+#         state: alliance
 #       - type: mob-kill
 #         mob: RAVAGER
 #         quantity: 1

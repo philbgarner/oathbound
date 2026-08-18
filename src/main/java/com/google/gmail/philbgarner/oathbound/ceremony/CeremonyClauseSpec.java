@@ -1,5 +1,7 @@
 package com.google.gmail.philbgarner.oathbound.ceremony;
 
+import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticState;
+
 import java.util.Objects;
 
 /** The template shape of one clause in a {@link CeremonyTemplateDefinition}, with placeholders (a
@@ -45,6 +47,24 @@ public sealed interface CeremonyClauseSpec {
     record CustomFlagSpec(String text) implements CeremonyClauseSpec {
         public CustomFlagSpec {
             Objects.requireNonNull(text, "text");
+        }
+    }
+
+    /** Sets the diplomatic relation between the liege group and the target's own personally-owned
+     * territory group to {@code newState} the moment the oath activates - the same "target's territory"
+     * resolved for {@link TransferSpec} (see {@link CeremonyService#resolveSubjectGroup}), reused here
+     * since a ceremony has no separate way to name a second group. Both sides resolve to the root of
+     * their ownership chain at execution time (see {@code diplomacy.DiplomacyService}), so this reads
+     * naturally even when the target's own group is a minor vassal - the relation lands on whichever
+     * liege actually holds diplomatic authority. {@link DiplomaticState#NEUTRAL} isn't a valid target
+     * here, same restriction as the unilateral/treaty paths - there's nothing to "declare" back to
+     * neutral. */
+    record DiplomacySpec(DiplomaticState newState) implements CeremonyClauseSpec {
+        public DiplomacySpec {
+            Objects.requireNonNull(newState, "newState");
+            if (newState == DiplomaticState.NEUTRAL) {
+                throw new IllegalArgumentException("DiplomacySpec cannot target NEUTRAL");
+            }
         }
     }
 }

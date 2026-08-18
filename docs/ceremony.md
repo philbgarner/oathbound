@@ -26,9 +26,9 @@ flowchart TD
     Reply -->|matches a confirm-phrase| Confirm[handleConfirm]
     Reply -->|"anything else / no reply\nbefore prompt-timeout-seconds"| Drop["Message ignored (falls through) /\npending entry silently expires"]
 
-    Confirm --> ResolveGroup["Resolve target's sole\npersonally-owned territory group\n(for any TransferSpec clause) -\nerrors if they own 0 or &gt;1 groups"]
+    Confirm --> ResolveGroup["Resolve target's sole\npersonally-owned territory group\n(for any TransferSpec or DiplomacySpec\nclause) - errors if they own 0 or &gt;1 groups"]
     ResolveGroup --> Withdraw["Withdraw any TributeSpec items\nfrom the target's inventory"]
-    Withdraw --> Materialize["CeremonyService.materialize:\nspecs -&gt; real Clauses -\nTransferClause+PvpDeathCount,\nEscrowClause, MobKillClause, CustomFlagClause"]
+    Withdraw --> Materialize["CeremonyService.materialize:\nspecs -&gt; real Clauses -\nTransferClause+PvpDeathCount, EscrowClause,\nMobKillClause, CustomFlagClause, DiplomacyClause"]
     Materialize --> CreateOath["OathService.createDraft\n(bloodOath flag from template)"]
     CreateOath --> AddClauses[Add every materialized clause]
     AddClauses --> SealNow["propose -&gt; seal -&gt; activate,\nall in one call - both sides already\nconsented via the ceremony itself"]
@@ -41,8 +41,18 @@ flowchart TD
 - Ceremonies are purely a **front-end for the Oath system** - every completed ceremony produces and
   immediately seals/activates a real `Oath`, same lifecycle as any other (see
   [Oath Lifecycle](oath-lifecycle.md)), just skipping the usual propose-then-wait gap.
-- A template's clause list can include a `DiplomacyClause` (see [Diplomacy](diplomacy.md)) per the
-  data model, though no shipped example currently uses one.
+- A template's clause list can include a `DiplomacySpec` (see [Diplomacy](diplomacy.md)), materialized
+  into a `DiplomacyClause` between the liege group and the target's own resolved territory group - the
+  shipped `fealty` example in `config.yml` uses one (`state: alliance`) to seal an alliance between the
+  Crown and the sworn vassal's own kingdom in the same ceremony that transfers land and collects
+  tribute. `state: neutral` is rejected - there's nothing to "declare" back to it (same restriction as
+  the unilateral/treaty diplomacy paths).
+- `CeremonyService.materialize` enforces the same "only REGION/KINGDOM-tier root groups may hold a
+  relation" rule the debug diplomacy commands enforce, resolved via `OwnershipResolver.resolveRootGroup`
+  on both the liege group and the target's resolved territory group - a ceremony can't quietly create a
+  relation on a bare Individual-tier group the way the raw domain model would otherwise allow. Sealing
+  fails with a `CeremonyValidationException` (shown to both parties, oath not created) if either side's
+  root isn't REGION/KINGDOM tier.
 - No connection exists to Altars anywhere in the ceremony code.
 - **Known gaps:** `ceremony-templates` ships empty, so nothing works until an admin authors YAML. There
   is no admin command to unbind a block trigger short of physically breaking the block, and no
@@ -52,4 +62,6 @@ flowchart TD
 
 `ceremony/*.java`, `listener/CeremonyInteractListener.java`, `listener/CeremonyChatListener.java`,
 `listener/CeremonyTriggerListener.java`, `listener/CeremonyTriggerBreakListener.java`,
-`db/migrations/0014_ceremony_triggers.sql`, the `ceremony-templates` config shape.
+`db/migrations/0014_ceremony_triggers.sql`, `config/OathboundConfig.java`
+(`parseCeremonyTemplates`/`parseCeremonyClauses`), the `ceremony-templates` config shape,
+`group/OwnershipResolver.java` (`resolveRootGroup`, used by the diplomacy tier check).
