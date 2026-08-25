@@ -6,10 +6,11 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
-/** A rooted, invulnerable Villager NPC that opens a fixed buy/sell shop menu for its {@link NpcRole} on
- * right-click, instead of the vanilla trade GUI. {@code entityId} is the backing Bukkit entity's UUID -
- * the sole lookup key at interact-time, mirroring
- * {@link com.google.gmail.philbgarner.oathbound.notary.Notary}. */
+/** A rooted, invulnerable Villager NPC of a given {@link NpcRole} - AI disabled and removal suppressed so
+ * it can't wander off or despawn, but otherwise a completely standard villager: right-clicking it opens
+ * the normal vanilla trade GUI for its profession, no custom menu or price list involved. {@code entityId}
+ * is the backing Bukkit entity's UUID, the sole lookup key for admin lookups
+ * ({@code /oathbound-debug villager}). */
 public record VillagerNpc(UUID id, UUID entityId, EntityRef owner, NpcRole role, String name,
                            VillagerNpcLocation location, Instant installedAt) {
     public VillagerNpc {

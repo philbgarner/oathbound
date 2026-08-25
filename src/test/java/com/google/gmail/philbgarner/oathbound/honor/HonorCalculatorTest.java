@@ -1,6 +1,7 @@
 package com.google.gmail.philbgarner.oathbound.honor;
 
 import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
+import com.google.gmail.philbgarner.oathbound.oath.Clause;
 import com.google.gmail.philbgarner.oathbound.oath.Ledger;
 import com.google.gmail.philbgarner.oathbound.oath.Oath;
 import com.google.gmail.philbgarner.oathbound.oath.OathService;
@@ -34,6 +35,31 @@ final class HonorCalculatorTest {
     void breachLossIsALargerSwingThanFulfillGainForTheSameOath() {
         Oath oath = draft(false);
         assertTrue(calculator.breachLoss(oath) > calculator.fulfillGain(oath));
+    }
+
+    @Test
+    void customFlagOnlyOathScoresZeroGainAndZeroLoss() {
+        Oath oath = draft(false);
+        oathService.addClause(oath, new Clause.CustomFlagClause("Keep the peace of this land."));
+        assertEquals(0L, calculator.fulfillGain(oath));
+        assertEquals(0L, calculator.breachLoss(oath));
+    }
+
+    @Test
+    void customFlagOnlyBloodOathAlsoScoresZero() {
+        Oath oath = draft(true);
+        oathService.addClause(oath, new Clause.CustomFlagClause("Swear only in blood."));
+        assertEquals(0L, calculator.fulfillGain(oath));
+        assertEquals(0L, calculator.breachLoss(oath));
+    }
+
+    @Test
+    void mixingARealClauseWithAFlagClauseStillScoresNormally() {
+        Oath oath = draft(false);
+        oathService.addClause(oath, new Clause.CustomFlagClause("Some RP color text."));
+        oathService.addClause(oath, new Clause.KillCountClause(new PlayerRef(UUID.randomUUID()), 3));
+        assertEquals(20L, calculator.fulfillGain(oath));
+        assertEquals(40L, calculator.breachLoss(oath));
     }
 
     private Oath draft(boolean blood) {

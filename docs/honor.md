@@ -11,8 +11,12 @@ flowchart TD
     ToState -->|BROKEN| Loss
     ToState -->|"SEALED / ACTIVE / VOIDED"| NoOp["No-op - VOIDED is deliberately\nneutral (mutual cancellation)"]
 
-    Gain["HonorCalculator.fulfillGain(oath)"] --> Severity1
-    Loss["HonorCalculator.breachLoss(oath)"] --> Severity1
+    Gain["HonorCalculator.fulfillGain(oath)"] --> StakesCheck
+    Loss["HonorCalculator.breachLoss(oath)"] --> StakesCheck
+
+    StakesCheck{"Non-empty clause list,\nAND every clause is a\nCustomFlagClause?"}
+    StakesCheck -->|yes, no real stakes| ZeroDelta["delta = 0 - a pure RP pledge\n(e.g. the built-in welcome-pact)\nmoves no Honor either way"]
+    StakesCheck -->|no| Severity1
 
     Severity1["OathSeverity.of(oath) =\nclause count + sum of escrowed\ncurrency amounts (min 1)"] --> Scale["delta = base * severity\n(fulfill-gain-base=10 or\nbreach-loss-base=20)"]
     Scale --> BloodCheck{oath.bloodOath?}
@@ -20,6 +24,7 @@ flowchart TD
     BloodCheck -->|no| Skip[No amplification]
     Amplify --> Apply
     Skip --> Apply
+    ZeroDelta --> Apply
 
     Apply["For EVERY party on the oath:\nHonorService.adjust(party, ±delta)\n(persisted async)"] --> BreachDebuff{"BROKEN and\noath.bloodOath?"}
     BreachDebuff -->|yes| Debuff["Every party gets a temporary\npotion-effect curse\n(honor.blood-oath-breach-debuff-*,\ndefault WEAKNESS, 300s, amplifier 1)"]
@@ -45,13 +50,18 @@ flowchart TD
 
 ## Notes
 
+- **No-stakes oaths score zero Honor movement.** `HonorCalculator.scale` short-circuits to `delta = 0`
+  before computing `OathSeverity` for any oath whose clause list is non-empty but made up entirely of
+  `CustomFlagClause`s (a zero-clause oath is unaffected - that's the baseline "not fleshed out yet" case,
+  still scored at severity 1). Without this, a zero-stakes oath like the built-in `welcome-pact` ceremony
+  minted the full `fulfill-gain-base` for both parties on every use, repeatably and for free - closed by
+  this check rather than by delaying `CustomFlagClause`'s (deliberately instant) auto-fulfillment.
 - **Known limitation:** the domain model has no fault-attribution concept, so Honor moves apply to
   **every party** of the oath on both `FULFILLED` and `BROKEN` - not just whoever was actually at
   fault. `BROKEN` itself is still only reachable via `/oathbound-debug oath breach` - there's no
   automated "unmet deadline" detection yet.
-- Item stakes have no scalar value system yet (the same gap Altar sacrifice valuation solves for
-  enchantments), so `OathSeverity` only counts clause count and escrowed *currency* - item-heavy oaths
-  under-score relative to their real stakes today.
+- Item stakes have no scalar value system yet, so `OathSeverity` only counts clause count and escrowed
+  *currency* - item-heavy oaths under-score relative to their real stakes today.
 - Cosmetic titles are display-only via `/oathbound-debug honor info` - no chat-prefix or Oath-Board
   integration exists yet.
 

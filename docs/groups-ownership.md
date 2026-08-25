@@ -7,8 +7,8 @@ company can belong to a town, a town to a region, and so on. Paste into
 
 ## Tier hierarchy
 
-`GroupTier` ordinal order drives every nesting/tie-break decision in the plugin (altar claim overlap,
-new-altar nesting legality):
+`GroupTier` ordinal order drives tier-sensitive decisions elsewhere in the plugin - e.g. Diplomacy
+restricting relations to REGION/KINGDOM-tier roots (see [Diplomacy](diplomacy.md)):
 
 ```mermaid
 flowchart LR
@@ -65,16 +65,29 @@ flowchart LR
 by name, and checks membership in that role's permission set - defaulting to `false` (deny) if either
 lookup fails.
 
+`BUILD` currently has one real consumer: it's the convention [WorldGuard Integration](worldguard-integration.md)
+uses to decide which of a linked group's members get pushed as a WorldGuard region's owners - not enforced
+in code beyond that sync (WorldGuard's own region flags are the actual gate), just the source-of-truth
+membership list.
+
 ## Notes
 
-- **Known gap:** the only code path that creates groups/roles/members today is
-  `/oathbound-debug group create <name> [tier]`, which makes the creator an "Owner" role holding every
-  permission. There is no in-game GUI or command yet for inviting members, assigning roles, or editing
-  a role's permission set after creation.
+- **Group creation:** `/oathbound-group create <name> [tier]` is the player-facing entry point -
+  `command/OathboundGroupCommand.createGroup` makes the creator an "Owner" role holding every permission
+  and is the only code path anywhere that constructs a `ProtectionGroup` (the `/oathbound-debug group
+  create` debug equivalent calls the same shared method, kept for admin/testing scripting). Gating the
+  entire `/oathbound-debug` surface behind the `oathbound.debug` permission (see [README](../README.md)'s
+  Debug commands section) would otherwise have left non-admins with no way to found a group, or lock a
+  single chest, at all - this command exists specifically so that isn't the case. The same command also
+  handles `link-region` (requires `TRANSFER_OWNERSHIP`) - see [WorldGuard Integration](worldguard-integration.md).
+- **Known gap:** there is still no in-game GUI or command for inviting members, assigning roles, or
+  editing a role's permission set after creation - a group has exactly one member (its founder) for now,
+  regardless of which command created it.
 - Cycle-safety is enforced **at write time only** - a plain read never re-validates an already-stored
   chain.
 
 ## Update this diagram when touching
 
 `group/ProtectionGroup.java`, `group/GroupTier.java`, `group/GroupPermission.java`, `group/Role.java`,
-`group/Member.java`, `group/EntityRef.java`, `group/OwnershipResolver.java`.
+`group/Member.java`, `group/EntityRef.java`, `group/OwnershipResolver.java`,
+`command/OathboundGroupCommand.java`, `command/OathboundDebugCommand.java` (`groupCreate`/`groupTransfer`/etc.).

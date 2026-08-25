@@ -3,19 +3,19 @@
 **Diegetic, mechanically-binding agreements for Paper servers.**
 
 Oathbound brings contract law to your Minecraft kingdom. Players draft, negotiate, and seal binding
-Oaths — with real escrow, real reputation consequences, and real territory on the line — all through
-in-world objects (contract books, notaries, altars) instead of bare slash commands. It's built for
-fantasy-kingdom roleplay servers that want diplomacy, betrayal, and consequences to actually mean
-something.
+Oaths — with real escrow and real reputation consequences on the line — all through in-world objects
+(contract books, oath-sealing NPCs) instead of bare slash commands. It's built for fantasy-kingdom
+roleplay servers that want diplomacy, betrayal, and consequences to actually mean something. Territory
+protection is left to a dedicated plugin (WorldGuard is a first-class optional integration) rather than
+reimplemented here.
 
-Fully self-contained: **no Vault, no LuckPerms, no external claim plugin.** Oathbound owns its own
-currency, permissions, and territory systems, backed by an embedded SQLite database — nothing extra
-to stand up.
+Fully self-contained for what it *does* own: **no Vault, no LuckPerms required.** Oathbound owns its own
+currency and permission/ownership systems, backed by an embedded SQLite database. WorldGuard is an
+optional `softdepend` for anyone who wants area claims kept in sync with Oathbound group ownership.
 
-> **Status:** early development. The core Oath engine, ownership/permission model, altar placement
-> detection, and chest-GUI flows for both open trade contracts and named-party oaths are implemented and
-> tested. Everything else in the [Roadmap](#roadmap) is still on the way — see that section for exactly
-> what's live today.
+> **Status:** early development. The core Oath engine, ownership/permission model, and chest-GUI flows
+> for both open trade contracts and named-party oaths are implemented and tested. See [Roadmap](#roadmap)
+> for exactly what's live today.
 
 ---
 
@@ -27,19 +27,18 @@ A few moments this looks like in practice:
   stack of blaze rods. Neither wants to go first. Instead, each deposits their side into a chest-GUI
   trade contract - the plugin holds both, swaps them the instant the second deposit lands, and queues
   delivery safely even if someone's offline when it clears. No middleman, no risk of a ninja logout.
-- **A marriage alliance, sealed and witnessed.** Two rival Houses swear a Blood Oath at the Notary to
-  cement a truce, with the whole court named as witnesses. It posts to the Public Oath Board the moment
-  it's sealed - and if either side breaks it later, that breach posts too, broadcasts server-wide, and
-  costs the breaker real Honor plus a temporary curse. Reputation stops being a roleplay conceit and
-  starts being a ledger anyone can check.
-- **A border fort that can actually fall.** A frontier kingdom raises an altar and feeds it enchanted
-  gear to keep its claim radius wide enough to matter. Let sacrifices lapse, though, and Power decays -
-  drop below Critical and the altar's protection collapses, leaving its barrel open to being looted or
-  destroyed outright by whoever gets there first. Territory has to be maintained, not just claimed once.
-- **A price on a serial oath-breaker's head.** Tired of a rival who keeps breaking deals, a player posts
-  a bounty on them at the Notary board. Anyone who lands the qualifying kill turns in the dropped head
-  for the payout, and the target does real time in a purpose-built prison before they're teleported back
-  to where they died.
+- **A marriage alliance, sealed and witnessed.** Two rival Houses swear a Blood Oath at the Sealing Table
+  to cement a truce, with the whole court named as witnesses. It posts to the Public Oath Board the
+  moment it's sealed - and if either side breaks it later, that breach posts too and costs the breaker
+  real Honor plus a temporary curse. Reputation stops being a roleplay conceit and starts being a ledger
+  anyone can check.
+- **A claim that stays in the family.** A Kingdom links its capital's WorldGuard region to its
+  `ProtectionGroup`. When the ruling house's line passes to an heir via a `TransferClause`, the linked
+  region's WorldGuard owners update automatically - no separate manual step, no gap where the claim is
+  unprotected or misattributed.
+- **A found item and its finder.** A player deposits an item into escrow as part of an oath; if the
+  recipient's offline when the release condition fires, it waits in a claimable pool instead of being
+  lost, with a login nudge the moment it's there to collect.
 
 ---
 
@@ -62,21 +61,17 @@ A few moments this looks like in practice:
   ACTIVE → FULFILLED / BROKEN / VOIDED`. Every transition is validated and written to an append-only
   ledger.
 - **Clauses & conditions** — oaths are built from composable clauses (transfer ownership, escrow
-  payment, custom RP flags, kill counts) gated by composable conditions (time elapsed, death count,
-  payment received, vote tally, manual confirmation, and `AND`/`OR`/`NOT` combinations of any of the
-  above).
+  payment, custom RP flags, kill counts, diplomacy) gated by composable conditions (time elapsed, death
+  count, payment received, vote tally, manual confirmation, and `AND`/`OR`/`NOT` combinations of any of
+  the above).
 - **ProtectionGroups** — the single ownership/permission primitive behind everything: chests, doors,
-  claims, companies, towns, kingdoms. Ownership can be a player *or* another group, so a territory can
+  companies, towns, kingdoms, diplomacy. Ownership can be a player *or* another group, so a territory can
   belong to "the ruling house" and survive a change in who leads that house without ever touching the
   territory's own record. Ownership-chain resolution is cycle-safe and depth-limited by design.
 - **Native economy** — plugin-owned, multi-currency player balances. No economy plugin required.
-- **Territory altars** — consecrate an altar by stacking a barrel, a capstone block (obsidian by
-  default, configurable), and a candle. Completing the structure creates the altar at zero Power;
-  claim radius is a live, diminishing-returns function of Power and scales with your group's tier
-  (Individual → Company → Town → Region → Kingdom). Right-click the barrel to sacrifice enchanted items
-  and charge Power, which decays back to zero over a configurable number of days if left unmaintained;
-  a Critical-Power altar loses protection entirely and its barrel can be Destroyed (a Desecration) or
-  Looted.
+- **WorldGuard integration (optional)** — link a `ProtectionGroup` to a WorldGuard region; the region's
+  owners stay in sync with the group's members automatically across ownership changes. A `softdepend`,
+  not a hard requirement - everything else works fine with WorldGuard absent.
 - **Chest-GUI open trade contracts** — post an item-for-item barter offer with no named counterparty
   through an in-world chest interface; anyone can browse the open contract board and fulfill it. The
   first player to accept becomes the oath's second party and the swap happens automatically, with
@@ -86,25 +81,27 @@ A few moments this looks like in practice:
   propose it. The named counterparty reviews and signs (or declines) it from their own pending-oaths
   board.
 - **Live condition-engine wiring** — a periodic engine watches every active oath and executes a
-  transfer or escrow clause's effect, or resolves a kill-count clause, the moment its condition is
-  actually met (death counts, elapsed time, manual confirmation, or currency already escrowed), rather
-  than just being able to evaluate whether it *would* be met.
+  transfer, escrow, or diplomacy clause's effect, or resolves a kill-count clause, the moment its
+  condition is actually met, rather than just being able to evaluate whether it *would* be met.
 - **Virtualized Escrow** — items and currency staked as part of an oath are withdrawn from the depositor
   immediately; currency pays straight into the recipient's balance on release, items go into a claimable
   pool with a configurable expiry that returns them to the depositor if nobody claims them.
-- **Bounty / Kill Contracts** — place a PvP bounty on a player or every member of a group through the
-  Notary's Bounty Board; the fee scales with how "hot" the target already is and decays over time, with a
-  hard daily placement cap and a discount if they recently broke an oath with you. A qualifying kill force
-  drops a tagged head — turning it in at any Notary is the fulfillment action (no kill-attribution
-  tracking), paying per head for group contracts, and banishing the victim to a purpose-built End pen for
-  a duration scaled by the bounty paid, with stacking sentences capped at a configurable maximum. Standing,
-  repeatable, admin-authored PvE kill contracts share the same Bounty Board for a currency-driven mob-kill
-  economy tap.
+- **Diplomacy** — set `WAR`/`PEACE`/`ALLIANCE` between two groups' senior-most ("root") owners, either
+  unilaterally (declaring war) or via a mutually-sealed treaty oath; PvP damage between two players can
+  be restricted to only when their groups are at declared war.
+- **Ceremony Designer** — admin-authored templates that skip the usual propose-and-wait handshake: hand
+  a tagged item to a player (or bind it to a pressure plate/button), they get a dialogue prompt and a
+  click-to-accept confirmation, and the oath activates immediately on accept.
+- **Anchored villager NPCs** — install any of 13 vanilla villager professions at a fixed spot; the
+  spawned villager is invulnerable and can't wander off, but otherwise behaves exactly like a normal
+  Minecraft villager - default profession, default trades, default trade GUI. No custom shop system to
+  configure.
+- **Honor & reputation** — a global Honor score per player, moved automatically by oath outcomes, with
+  Blood Oath amplification and cosmetic title tiers.
+- **Public Oath Board** — a physical board (regional or capital-wide) that surfaces witnessed oath
+  activity without any separately-stored feed - it queries the Ledger live.
 - **Everything persists** — SQLite-backed via a pluggable storage adapter, with an in-memory cache for
   fast permission checks and async writes so gameplay never blocks on disk I/O.
-
-See [`oathbound-master-plan.md`](./oathbound-master-plan.md) for the full design doc, including
-systems not built yet (elections and the full counter-offer negotiation chain).
 
 ---
 
@@ -135,31 +132,32 @@ vice versa. If either side is offline the instant the swap happens, their items 
 `TradeOffer` and delivered automatically the next time they log in, so nothing is lost. The creator can
 also cancel their own unclaimed listing from the board to get their items back.
 
-This is deliberately a narrow, self-contained feature rather than the general-purpose Escrow system
-described in the master plan (§4) — it doesn't use the generic `EscrowClause`/release-schedule model
-(that's built now, see below, but the trade board still doesn't use it - it's a simpler direct swap).
+This is deliberately a narrow, self-contained feature rather than the general-purpose Escrow system —
+it doesn't use the generic `EscrowClause`/release-schedule model, just a simpler direct swap.
 
 ### Named-party oaths (the general-purpose builder)
 
 `/oathbound-oath create <player>` drafts a two-party oath against a named counterparty and opens a chest
 GUI for building it up: click a button to add a **transfer** clause (reassigns one of your
-`ProtectionGroup`s' ownership), a **custom flag** (free-text roleplay clause with no mechanical effect),
-a **kill count** (a target player and a required kill tally - not executed yet, see the Roadmap), or an
-**escrow** clause (deposit items and/or currency, released to the counterparty once the oath is signed).
-A separate **Add Witness** button (not a clause - witnesses don't affect the oath's terms) lets you name
-players who'll see this oath post to any Oath Board once it's sealed, fulfilled, or broken; unwitnessed
-oaths never post anywhere, for privacy. Since chest GUIs have no text field, any free text or numbers a
-clause needs (flag wording, a target's name, a quantity, a currency amount, a witness's name) are
-collected by closing the GUI and typing the answer in chat, which the plugin intercepts. Once at least
-one clause is attached, **Propose** sends the draft to the
-named counterparty; they review it and sign or decline it from their own `/oathbound-oath pending` board.
-Signing carries the oath straight through `SEALED` into `ACTIVE`, same as accepting an open contract does.
+`ProtectionGroup`s' ownership - the mechanism behind, for example, passing a claim to an heir), a
+**custom flag** (free-text roleplay clause with no mechanical effect), a **kill count** (a target player
+and a required kill tally, resolved once `DeathTracker` confirms it), or an **escrow** clause (deposit
+items and/or currency, released to the counterparty once the oath is signed). A separate **Add Witness**
+button (not a clause - witnesses don't affect the oath's terms) lets you name players who'll see this
+oath post to any Oath Board once it's sealed, fulfilled, or broken; unwitnessed oaths never post
+anywhere, for privacy. Since chest GUIs have no text field, any free text or numbers a clause needs (flag
+wording, a target's name, a quantity, a currency amount, a witness's name) are collected by closing the
+GUI and typing the answer in chat, which the plugin intercepts. Once at least one clause is attached,
+**Propose** sends the draft to the named counterparty; they review it and sign or decline it from their
+own `/oathbound-oath pending` board. Signing carries the oath straight through `SEALED` into `ACTIVE`,
+same as accepting an open contract does.
 
 Every clause added this way is gated by an `Immediate` condition (the builder doesn't expose a condition
 picker yet), but once the oath is `ACTIVE` a periodic condition engine actually executes it: transfer
-clauses reassign ownership, and escrow clauses pay their currency straight into the recipient's balance
-and drop any items into a claimable pool (`/oathbound-oath claim`). Kill-count clauses still have no
-execution behind them - see the [Roadmap](#roadmap).
+clauses reassign ownership (and, if the group is linked to a WorldGuard region, trigger an owner-list
+resync - see [WorldGuard Integration](docs/worldguard-integration.md)), escrow clauses pay their
+currency straight into the recipient's balance and drop any items into a claimable pool
+(`/oathbound-oath claim`), and kill-count clauses resolve once the tracked death count is met.
 
 ### Escrow
 
@@ -172,9 +170,7 @@ anywhere. `/oathbound-oath claim` lists everything you can currently claim (norm
 recipient), and you get a login nudge if something's waiting. A release schedule with multiple steps
 fires atomically - everything releases once every step's condition is true at once, not incrementally.
 If a released item batch goes unclaimed for `escrow.claim-expiry-days` (30 by default), it flips back to
-being claimable by the original depositor instead. Escheat-to-Notary and breach-split abandonment
-policies from the master plan aren't implemented, since neither a Notary nor a breach-split system exists
-yet - "return to depositor" is the only policy for now.
+being claimable by the original depositor instead.
 
 ### ProtectionGroups
 
@@ -183,99 +179,46 @@ Every claim, faction, company, or kingdom is a `ProtectionGroup`. Groups have me
 ownership, accept deals on the group's behalf, etc.), and an `owner`, which is either a specific player
 or *another group*. Resolving who ultimately owns something walks that chain live, with a fixed depth
 cutoff — and any ownership change that would make a group its own ancestor is rejected at write time,
-before it's ever persisted.
+before it's ever persisted. `/oathbound-group create <name> [tier]` is the player-facing way to found
+one — the creator becomes its sole "Owner"-role member; there's no in-game invite/membership command yet
+(see [Roadmap](#roadmap)), so a group has exactly one member until that ships. `/oathbound-group
+link-region <groupId> <regionId>` links the group to a WorldGuard region, if WorldGuard is installed.
 
 ### Economy
 
 A native, per-player, multi-currency balance system. No Vault, no external plugin — Oathbound is the
 economy.
 
-### Altars
+### Diplomacy
 
-An altar starts as three blocks stacked directly on top of each other: a **barrel**, a **capstone
-block** (obsidian by default — configurable), and a **candle**. Placing the candle is the trigger:
-Oathbound checks what's directly below it, and if the structure is right, the altar is consecrated on
-the spot, owned by whoever placed the candle, at a **configurable starting Power** (default 150 - a
-one-time grace baseline, not counted as a real sacrifice, comfortably above the Decaying threshold so a
-brand-new altar is fully protected from the moment it exists rather than reading Critical before its
-owner has had a chance to sacrifice anything; set to 0 to restore the old zero-grace behavior),
-provided the location doesn't fall inside another altar's claim of the same or smaller `GroupTier`
-(nesting inside a strictly larger one - federating under a liege - is allowed). Its claim radius is
-computed live from current Power.
+A pairwise relation (`NEUTRAL`/`WAR`/`PEACE`/`ALLIANCE`) between two groups' *root* owners - diplomatic
+authority always belongs to the most senior group in an ownership chain, so a vassal's relations are
+whatever its liege's relations are. War can be declared unilaterally (a betrayal from an existing
+Peace/Alliance costs the declarer Honor); Peace/Alliance requires a mutually-sealed treaty oath
+(`DiplomacyClause`), since it rides on the normal propose/seal handshake. `pvp.restrict-to-declared-wars`
+(on by default) means two players can only deal PvP damage to each other if their groups' root relation
+is `WAR` - a sealed Peace or Alliance actually means something mechanically, not just cosmetically.
 
-Right-clicking the barrel opens a chest-GUI **sacrifice interface**: deposit enchanted items (item type
-doesn't matter, only the enchantment profile does) and confirm to consume them permanently and add to
-Power. An enchantment's contribution is normalized by its own max level (so maxing out any enchantment
-is worth the same base amount) and then scaled by a configurable rarity multiplier keyed to Minecraft's
-own COMMON/UNCOMMON/RARE/VERY_RARE selection-weight bands, so a rare, powerful enchantment is worth
-more than a common one even when both are equally "maxed out." Power is never stored as a raw number —
-like radius, it's recomputed live from the last sacrifice's total and a configurable "days full-to-empty"
-decay rate, so it visibly drains if the altar isn't maintained. Three vulnerability tiers gate
-everything else: **Normal** and **Decaying** (a
-configurable warning threshold triggers a login nudge to the owner) both keep full protection; only
-**Critical** (Power at or below a small configurable threshold) drops protection to zero and makes the
-barrel interactable for an outcome — **Destroy** it (a Desecration: Honor penalty for the breaker, a
-dramatic server-wide broadcast, and the altar record is deleted outright, requiring the structure to be
-physically rebuilt) or **Loot** it (XP orbs worth the most recent sacrifice's value, no Honor penalty by
-default). Any successful top-up starts a configurable reconsecration cooldown (5 minutes by default)
-before protection re-engages, even if Power already reads as sufficient.
+### Ceremony Designer
 
-### Notary
+Admin-authored templates (`config.yml`'s `ceremony-templates`) bind a group-to-individual agreement to a
+tagged item, given out via `/oathbound-debug ceremony give <templateId> <groupId> [player]`.
+Right-clicking another player with the item (or right-clicking it onto an already-placed pressure
+plate/button to bind the ceremony there instead, so the binder doesn't need to be online for the trigger
+to fire) speaks the template's `dialogue` to the target in chat, ending in a clickable [Accept]/[Decline]
+prompt - clicking Accept immediately materializes the template's clauses into a real Oath, taken straight
+through `DRAFT → PROPOSED → SEALED → ACTIVE` in one call since both sides already consented via the
+ceremony itself. Ships with one live default template, `welcome-pact` — a zero-mechanical-stakes
+onboarding pledge safe to hand any new player without review.
 
-`/oathbound-notary install <name>` spawns a rooted, invulnerable Villager at your location — no
-wandering AI, no vanilla trading. Right-click it to open a small hub: start a new named-party oath draft
-(you type the counterparty's name in chat) or review oaths proposed to you, from any Notary you
-interact with — the mailbox is scoped to you, not the physical NPC. The Sealing Table (right-click the
-configured block, a lectern by default) is a face-to-face shortcut straight to the draft prompt, skipping
-the hub. Proposals respect a per-recipient pending-offer cap and auto-void, neutrally, after sitting
-unanswered past a configurable number of days. Recipients still only sign or decline from the existing
-pending-oath board — editable counter-offers (the master plan's full negotiation state machine) aren't
-implemented yet.
-
-### Bounty / Kill Contracts
-
-The Notary's hub gains a fourth button, the **Bounty Board**: browse every active bounty, cancel your
-own (refunds the unpaid remainder — the placement fee is a sunk cost), or place a new one. Placing a
-bounty types the target's player or group name in chat, a quantity if it's a group (capped at that
-group's current member count), and a total reward, then confirms a heat-scaled Notary fee before any
-currency moves. Heat is never stored — like Altar Power, it's recomputed live from every other
-active/recent bounty on the same target, decaying over a configurable window, so the first bounty on
-someone is cheap and stacking several gets expensive fast; a hard daily cap on placements applies
-independent of heat, and a discount kicks in if the target broke an oath with you recently (approximated
-as "any oath between you two went `BROKEN`" — the Ledger has no fault-attribution concept, same known
-limitation as Honor).
-
-Bounties are placed *unilaterally* — the target never consents — so they aren't `Oath`s: dying to a
-qualifying kill force-drops a tagged player head (native item, no kill-attribution needed) and starts a
-banishment sentence for the victim. **Turning the head in at any Notary is the fulfillment action** —
-whoever holds and returns it gets paid, not necessarily who landed the kill. Group contracts pay per head
-in even installments, the contract staying open until every head is turned in. Banishment teleports the
-victim to a fixed, admin-built End pen (`/oathbound-debug banishment set-pen` records the coordinates)
-for real-world hours scaled by the bounty amount just paid, clamped to a min/max; a subsequent qualifying
-kill while already serving extends the remaining time rather than resetting it, capped at a configurable
-maximum total. The pen holds the player even across logout/respawn until release, which auto-teleports
-them back to where they died — checked on a schedule and on login if it elapsed while offline.
-
-The same board also lists **standing PvE contracts** — admin-authored, repeatable kill-a-number-of-this-
-mob quests for currency, configured in `config.yml` rather than built per-instance. These use native
-Bukkit kill-attribution (unlike bounties) since there's no reason to avoid it for a server-owned economy
-tap, and pay out (then reset for the next batch) the moment the required kill count is reached.
-
-A one-time login notice tells a player they have a bounty on their head the first time they log in after
-it's placed (not every login); `/oathbound-bounty list [player]` is the always-available pull command,
-and `/oathbound-bounty notify off` opts out of the login notice entirely.
-
-### Villager Shops
+### Anchored villager NPCs
 
 Thirteen `/oathbound-<role>` commands (armorer, butcher, cartographer, cleric, farmer, fisherman,
-fletcher, leatherworker, librarian, mason, shepherd, toolsmith, weaponsmith — every vanilla Villager
-profession that actually trades) each spawn the same kind of rooted, invulnerable Villager the Notary
-uses, skinned for that role. Right-click one to open a fixed buy/sell chest menu instead of vanilla
-trading — every NPC of a given role shares that role's stock, a plain admin-edited list of items and
-prices in `config.yml` (`villagers.<role>.sells` / `.buys`), not a per-instance builder. Buying withdraws
-from your balance and grants the item; selling takes the item and deposits your balance, both through the
-same `EconomyService` the rest of the plugin uses. Four roles (fisherman, mason, farmer, librarian) ship
-with a small default stock out of the box; the rest start empty until an admin configures them.
+fletcher, leatherworker, librarian, mason, shepherd, toolsmith, weaponsmith — every vanilla `Villager`
+profession that actually trades) each spawn a rooted, invulnerable Villager skinned for that role at
+your location - AI disabled and removal suppressed so it can't wander off or despawn, but otherwise a
+completely standard villager. Right-click it and you get the normal vanilla trade GUI for its profession;
+Oathbound doesn't intercept the interaction or maintain a custom price list.
 
 ### Public Oath Board
 
@@ -290,15 +233,27 @@ board is opened, the same pattern every other board-style GUI in this plugin alr
 
 ### Persistence
 
-All state — oaths, groups, ledger entries, balances, altars, trade offers, death records, escrow claims,
-protections, Honor, notaries, oath boards, villager shop NPCs, bounties, banishments, PvE contract
-progress — is stored via a `DataStore` adapter interface. The only implementation today is SQLite (embedded, file-based, bundled
-inside the plugin jar — there is nothing separate to install or run). The interface is adapter-based
-specifically so a flat-file/YAML backend can be added later without touching any calling code.
+All state — oaths, groups, ledger entries, balances, trade offers, death records, escrow claims,
+protections, Honor, oath boards, villager NPCs, diplomatic relations, ceremony triggers, WorldGuard
+region links — is stored via a `DataStore` adapter interface. The only implementation today is SQLite
+(embedded, file-based, bundled inside the plugin jar — there is nothing separate to install or run). The
+interface is adapter-based specifically so a flat-file/YAML backend can be added later without touching
+any calling code.
 
 ---
 
 ## Commands
+
+### Groups & claims (in-game)
+
+```
+/oathbound-group create <name> [tier]              # found a Company/Town/Region/Kingdom - you become its sole Owner
+/oathbound-group link-region <groupId> <regionId>   # link the group to a WorldGuard region (requires TRANSFER_OWNERSHIP)
+```
+
+`create` is needed before a chest or door can be locked to anything, or before any of the commands below
+can name a group you belong to. `tier` defaults to `INDIVIDUAL` if omitted. `link-region` is a no-op
+data record (still saved) if WorldGuard isn't installed - see [WorldGuard Integration](docs/worldguard-integration.md).
 
 ### Trade contracts (in-game GUI)
 
@@ -315,28 +270,10 @@ specifically so a flat-file/YAML backend can be added later without touching any
 /oathbound-oath claim                         # list escrow item batches you can currently claim
 ```
 
-### Notary NPC (in-game)
+Right-click the configured Sealing Table block (a lectern by default) for a face-to-face shortcut
+straight to the draft-name prompt.
 
-```
-/oathbound-notary install <name...>   # spawn a rooted, invulnerable Notary Villager at your location
-```
-
-Right-click an installed Notary to open its menu (start a new named-party oath draft, review oaths
-proposed to you, or open the Bounty Board), or right-click the configured Sealing Table block (a lectern
-by default) for a face-to-face shortcut straight to the draft prompt.
-
-### Bounty / Kill Contracts (in-game GUI + commands)
-
-```
-/oathbound-bounty list [playerName]   # show active bounties on you (or another player)
-/oathbound-bounty notify <on|off>     # toggle the one-time login notice
-```
-
-Placement itself has no command — open the Bounty Board from any Notary, click "Place New Bounty," and
-follow the chat prompts (target, quantity if a group, reward) through to the fee-preview confirm screen.
-Fulfillment is just holding a tagged head and right-clicking any Notary.
-
-### Villager Shops (in-game)
+### Villager NPCs (in-game)
 
 ```
 /oathbound-fisherman install <name...>      # and armorer, butcher, cartographer, cleric, farmer,
@@ -345,8 +282,7 @@ Fulfillment is just holding a tagged head and right-clicking any Notary.
 /oathbound-librarian install <name...>
 ```
 
-Right-click an installed shop NPC to open its buy/sell menu. Stock and prices are fixed per role in
-`config.yml`, not set per-NPC.
+Right-click an installed NPC for the normal vanilla trade GUI of its profession.
 
 ### Public Oath Board (in-game)
 
@@ -355,17 +291,22 @@ its hub and bind it (regional, to one of your groups) or leave/make it capital, 
 
 ### Debug commands
 
-Everything else (Oaths, ProtectionGroups, the Ledger, Altars) doesn't have a player-facing UI yet — a
-debug command surface lets you exercise it directly. Commands require a player, not console.
+Everything else (Oaths, ProtectionGroups, the Ledger, Diplomacy, Ceremony) doesn't have a player-facing
+UI yet — a debug command surface lets you exercise it directly. Commands require a player, not console.
+The whole surface requires the `oathbound.debug` permission (`default: op` in `plugin.yml`) — nothing
+under it is meant to be player-safe (arbitrary oath construction, `group transfer`, `honor adjust`, and
+so on), so an admin/testing role is expected to grant it explicitly on servers that don't want every
+player using it.
 
 ```
-/oathbound-debug group create <name> [tier]
+/oathbound-debug group create <name> [tier]   # same as /oathbound-group create - kept here too for admin/testing scripting
 /oathbound-debug group transfer <groupId> <player|group> <targetNameOrId>
 /oathbound-debug group info <groupId>
 /oathbound-debug group list
 
 /oathbound-debug oath create <otherPlayerName> [blood]
 /oathbound-debug oath addflag <oathId> <text...>
+/oathbound-debug oath adddiplomacy <oathId> <groupA> <groupB> <war|peace|alliance>
 /oathbound-debug oath confirm <oathId>
 /oathbound-debug oath propose <oathId>
 /oathbound-debug oath seal <oathId>
@@ -379,15 +320,8 @@ debug command surface lets you exercise it directly. Commands require a player, 
 /oathbound-debug ledger recent [limit]
 /oathbound-debug ledger <oathId>
 
-/oathbound-debug altar list
-/oathbound-debug altar info <altarId>
-
 /oathbound-debug honor info [player]
 /oathbound-debug honor adjust <player> <delta>
-
-/oathbound-debug notary list
-/oathbound-debug notary info <notaryId>
-/oathbound-debug notary remove <notaryId>
 
 /oathbound-debug board list
 /oathbound-debug board info <boardId>
@@ -397,15 +331,13 @@ debug command surface lets you exercise it directly. Commands require a player, 
 /oathbound-debug villager info <villagerNpcId>
 /oathbound-debug villager remove <villagerNpcId>
 
-/oathbound-debug bounty list [player]
-/oathbound-debug bounty info <bountyId>
-/oathbound-debug bounty cancel <bountyId>
-/oathbound-debug bounty heat <player>            # preview the current heat-scaled fee for a target
+/oathbound-debug ceremony give <templateId> <groupId> [player]
+/oathbound-debug ceremony list
+/oathbound-debug ceremony triggers
 
-/oathbound-debug banishment list
-/oathbound-debug banishment info <player>
-/oathbound-debug banishment release <player>     # admin override, releases + teleports back immediately
-/oathbound-debug banishment set-pen              # records your current location as the End pen destination
+/oathbound-debug diplomacy declare-war <groupA> <groupB>
+/oathbound-debug diplomacy info <groupA> <groupB>
+/oathbound-debug diplomacy list
 ```
 
 `tier` is one of `INDIVIDUAL`, `COMPANY`, `TOWN`, `REGION`, `KINGDOM`. Tab completion works for
@@ -420,10 +352,12 @@ subcommands.
 - A **Paper 26.2** server (build 112 or later). Paper is the only supported platform — Oathbound uses
   Paper-specific API.
 - **Java 25** on the machine running the server (and on whatever machine builds the plugin).
-- **Nothing else.** Oathbound bundles its own SQLite driver and JSON library, shaded and relocated
-  inside the plugin jar, so there's no separate database server to install, configure, or point the
-  plugin at. The first time the plugin starts, it creates `oathbound.db` inside its own plugin data
-  folder and runs its schema migrations automatically.
+- **Nothing else required.** Oathbound bundles its own SQLite driver and JSON library, shaded and
+  relocated inside the plugin jar, so there's no separate database server to install, configure, or
+  point the plugin at. The first time the plugin starts, it creates `oathbound.db` inside its own plugin
+  data folder and runs its schema migrations automatically. **Optional:** install
+  [WorldGuard](https://enginehub.org/worldguard) too if you want `/oathbound-group link-region` to
+  actually sync region owners - Oathbound loads and runs fine without it.
 
 You do not need Gradle installed either — the repo ships a Gradle wrapper (`./gradlew`) that downloads
 the correct Gradle version on first use.
@@ -451,7 +385,7 @@ On first boot, Oathbound will:
 
 1. Create `plugins/Oathbound/config.yml` with the defaults shown below.
 2. Create `plugins/Oathbound/oathbound.db` (SQLite) and run its schema migrations.
-3. Log how many groups/oaths/altars/trade offers it loaded (zero, on a fresh install).
+3. Log how many groups/oaths/trade offers/etc. it loaded (zero, on a fresh install).
 
 There's a helper script if you're iterating locally against a server checked out elsewhere on disk —
 it builds, removes any previously-deployed Oathbound jar, and copies the fresh one in:
@@ -502,32 +436,6 @@ escrow:
   # recipient. Currency releases are unaffected - only unclaimed items expire.
   claim-expiry-days: 30
 
-altar:
-  # Block required directly on top of the barrel, with a candle placed on top of that, to
-  # consecrate an altar. Placing the candle is what triggers altar creation.
-  capstone-material: OBSIDIAN
-  # Radius (in blocks) = power-radius-scale * tier-multiplier * sqrt(current Power). Placeholder
-  # curve - real tuning happens once the sacrifice/decay system is built.
-  power-radius-scale: 4.0
-  tier-radius-multiplier:
-    INDIVIDUAL: 1.0
-    COMPANY: 1.25
-    TOWN: 1.5
-    REGION: 2.0
-    KINGDOM: 3.0
-  # Power a freshly-consecrated altar starts with - a one-time grace baseline (not a real sacrifice),
-  # comfortably above decaying-threshold so a new altar is Normal, not Critical, from the moment it's
-  # placed. Set to 0 for the old zero-grace behavior.
-  starting-power: 150
-  # Multiplies an enchantment's normalized sacrifice weight by Minecraft's own COMMON/UNCOMMON/RARE/
-  # VERY_RARE selection-weight rarity - a maxed-out rare enchantment is worth more than a maxed-out
-  # common one, not just "worth the same for being maxed."
-  enchantment-rarity-multiplier:
-    COMMON: 1.0
-    UNCOMMON: 1.5
-    RARE: 2.5
-    VERY_RARE: 4.0
-
 protection:
   # Item that must be held to lock/unlock a chest or door - right-click the block while holding
   # this item to open the group picker.
@@ -550,266 +458,101 @@ honor:
 notary:
   sealing-table-material: LECTERN
   pending-offer-cap-per-player: 10
+  pending-offer-cap-per-sender-recipient: 2
   negotiation-expiry-days: 7
 
 oath-board:
   material: OAK_SIGN
   feed-size: 50
 
-bounty:
-  fee-base: 100
-  heat-fee-multiplier: 0.5
-  heat-decay-hours: 72
-  max-placements-per-24h: 3
-  breach-discount-window-days: 14
-  breach-discount-fraction: 0.5
-  abandon-inactivity-days: 30
+ceremony-templates:
+  - id: welcome-pact
+    display-name: "Welcome Pact"
+    item-material: PAPER
+    item-display-name: "Charter of Welcome"
+    dialogue:
+      - "{initiator} offers you a place among these lands, {target}."
+      - "Swear only to keep the peace here - nothing more is asked of you."
+      - "Do you accept?"
+    prompt-timeout-seconds: 60
+    blood-oath: false
+    clauses:
+      - type: custom-flag
+        text: "Keep the peace of this land."
 
-banishment:
-  hours-per-currency-unit: 50
-  min-hours: 1
-  max-hours: 72
-  stack-cap-hours: 168
-  # Fixed End-pen destination - build the pen by hand, then run
-  # /oathbound-debug banishment set-pen at the release point instead of editing these by hand.
-  pen:
-    world: world_the_end
-    x: 0.5
-    y: 64.0
-    z: 0.5
-    yaw: 0.0
-    pitch: 0.0
+ceremony-block-triggers-enabled: true
 
-# Standing, repeatable, admin-authored PvE kill contracts - empty by default.
-# pve-contracts:
-#   - id: spider-cull
-#     display-name: "Spider Cull"
-#     mob: SPIDER
-#     quantity: 20
-#     reward:
-#       coin: 200
+diplomacy:
+  betrayal-honor-penalty: 20
 
-villagers:
-  # Each role's shop NPCs all share one fixed buy/sell list, edited here - not a per-instance builder.
-  fisherman:
-    sells:
-      - {material: COD, price: 2}
-      - {material: FISHING_ROD, price: 15}
-    buys:
-      - {material: TROPICAL_FISH, price: 1}
-  # ...mason, farmer, librarian ship with a small default stock too; the other 9 roles start empty
-  # (sells: [] / buys: []) until configured.
+pvp:
+  restrict-to-declared-wars: true
 ```
 
-`capstone-material`, `lock-tool-material`, `sealing-table-material`, and `oath-board.material` all accept
-any valid Bukkit `Material` name (each must be distinct), and `blood-oath-breach-debuff-effect` accepts
-any valid Bukkit `PotionEffectType` name. Each `villagers.<role>.sells`/`.buys` entry's `material` also
-accepts any valid Bukkit `Material` name.
+`lock-tool-material`, `sealing-table-material`, and `oath-board.material` all accept any valid Bukkit
+`Material` name (each must be distinct), and `blood-oath-breach-debuff-effect` accepts any valid Bukkit
+`PotionEffectType` name.
 
 ---
 
 ## Roadmap
 
-Tracking against the [master design plan](./oathbound-master-plan.md)'s build order.
+Tracking against the [master design plan](./oathbound-master-plan.md)'s build order, since rescoped to
+cut territory/kill-contract mechanics duplicated by dedicated plugins.
 
-### Done
+### Implemented
 
-- [x] Core Oath data model, lifecycle state machine, and Ledger
-- [x] Native currency + ranked `ProtectionGroup` (player-or-group owner, cycle-safe live resolver)
-- [x] Condition engine primitives (manual-confirm, time-elapsed, death-count, payment-received,
-      vote-tally, and `AND`/`OR`/`NOT` composition) and evaluation logic
-- [x] SQLite-backed persistence adapter with async writes and an in-memory cache
-- [x] Altar structure detection (barrel + capstone + candle) and altar creation at zero Power, with a
-      tier-scaled, Power-based radius formula
-- [x] Chest-GUI contract builder — open (no-named-counterparty) oaths, and an item-for-item trade
-      contract built on top of them (post via GUI, browse a board, fulfill, auto-swap).
-- [x] General-purpose chest-GUI builder for named-party oaths — attach transfer, custom-flag,
-      kill-count, and escrow clauses, propose to a named counterparty, and sign/decline from a
-      pending-oaths board.
-- [x] Condition-engine wiring for transfer and escrow clauses — a periodic engine evaluates every
-      `ACTIVE` oath's clauses against real backends (a persisted, timestamped death log feeding
-      `DeathCount`, wall-clock time for `TimeElapsed`, a manual-confirm store, `Immediate`, and
-      `AND`/`OR`/`NOT` composition) and executes the effect the moment a condition is met — ownership
-      reassignment for `TransferClause`, currency-to-balance and item-to-claim for `EscrowClause` — then
-      auto-carries the oath to `FULFILLED` once every clause it contains has resolved this way.
-      A release schedule with several steps fires atomically (everything releases once every step's
-      condition holds at once), not incrementally per step. `VoteTally` is still an honest no-op stub
-      (needs Election Oaths, still below), and `KillCountClause` is left untouched by this engine — an
-      oath containing one is deliberately never auto-fulfilled.
-- [x] Virtualized Escrow — items/currency deposited into an escrow clause are withdrawn from the
-      depositor immediately; currency releases straight to the recipient's balance, items go into a
-      claimable pool (`/oathbound-oath claim`, plus a login nudge) since delivery needs a real inventory.
-      Unclaimed items past a configurable expiry (`escrow.claim-expiry-days`, default 30) flip back to
-      claimable by the depositor instead. `PaymentReceived` now reports how much of a currency an oath's
-      own escrow clauses hold, so a same-oath `TransferClause` can gate on it. Escheat-to-Notary and
-      breach-split abandonment policies aren't implemented (no Notary or breach-split system exists yet)
-      — "return to depositor" is the only policy for now.
+- Core Oath data model, lifecycle state machine, and Ledger
+- Native currency + ranked `ProtectionGroup` (player-or-group owner, cycle-safe live resolver)
+- Condition engine primitives (manual-confirm, time-elapsed, death-count, payment-received, vote-tally,
+  and `AND`/`OR`/`NOT` composition) and evaluation logic, wired to actually execute Transfer/Escrow/
+  Diplomacy clause effects and resolve Kill-Count clauses
+- SQLite-backed persistence adapter with async writes and an in-memory cache
+- Chest-GUI contract builder — open (no-named-counterparty) oaths, and an item-for-item trade contract
+  built on top of them (post via GUI, browse a board, fulfill, auto-swap)
+- General-purpose chest-GUI builder for named-party oaths — attach transfer, custom-flag, kill-count,
+  and escrow clauses, propose to a named counterparty, and sign/decline from a pending-oaths board
+- Virtualized Escrow — deposit-on-add, atomic multi-step release schedules, a claimable pool for items
+  with configurable expiry-back-to-depositor
+- Chest/door access gating tied to `ProtectionGroup` permissions
+- Honor/reputation system + Blood Oath tier, with cosmetic title tiers
+- Diplomacy — unilateral war declarations and mutually-sealed treaty oaths between groups' root owners,
+  with an optional PvP-restriction side effect
+- Ceremony Designer — templated item/block-trigger oaths with click-based accept/decline
+- Public Oath Board (regional + capital), fed live from the Ledger
+- Anchored, invulnerable villager NPCs for all 13 trading professions, using vanilla trades
+- WorldGuard integration — link a `ProtectionGroup` to a region, keep its owners synced across
+  `TransferClause`-driven ownership changes
 
-- [x] Chest/door/claim access gating tied to `ProtectionGroup` — hold a configurable item (a
-      tripwire hook by default) and right-click a chest or door to open a chest-menu GUI listing every
-      group you're allowed to lock it to (you must already hold that group's `OPEN_CONTAINERS`/
-      `OPEN_DOORS` permission to lock a new block to it); a locked block then denies interaction to
-      anyone without that permission on the bound group. Separately, block break/place inside any
-      Altar's live claim radius is gated by a new `BUILD` permission on the altar's owning group (or,
-      for a player-owned altar, that specific player) — reuses the existing `AltarRadiusCalculator`
-      rather than building a second territory system. This is functionally inert in real play until
-      Altar Power/sacrifice exists (radius is always 0 today), but activates automatically once that
-      lands.
+**Known limitation carried across most of the above:** the domain model has no fault-attribution
+concept, so Honor/debuff effects on a `BROKEN` oath apply to every party, not just whoever actually broke
+it - and `BROKEN` is still only reachable via the debug command (no automated "unmet deadline" detection
+exists). A first step - fault-tagging on manually-declared breaches - is fully researched and parked in
+[`fault-attribution-plan.md`](./fault-attribution-plan.md).
 
-- [x] Honor/reputation system + Blood Oath tier — a single global Honor score per player, moved by a
-      `Ledger` listener whenever an oath resolves `FULFILLED` (gain) or `BROKEN` (loss, a larger swing
-      than the gain), scaled by a rough severity score (clause count + escrowed currency) and amplified
-      further for Blood Oaths in both directions; `VOIDED` stays neutral. A configurable minimum-Honor
-      threshold gates swearing new Blood Oaths (default 0 - it only blocks players who've already gone
-      Honor-negative). A Blood Oath breaking also applies a configurable temporary potion-effect
-      "curse" debuff. Cosmetic title tiers ("Faithbroken"/"Oathkeeper"/etc., config-driven thresholds)
-      are exposed via `/oathbound-debug honor info|adjust` - no chat-prefix/Oath-Board display yet since
-      neither has a precedent or exists respectively. **Known limitation:** the domain model has no
-      fault-attribution concept yet, so Honor/debuff effects apply to every party of the oath, not just
-      whoever actually broke it - and `BROKEN` is still only reachable via the debug command (no
-      automated "unmet deadline" detection exists). Both should narrow once a real breach-detection/
-      reporting flow is built; a first step - fault-tagging on manually-declared breaches - is fully
-      researched and parked in [`fault-attribution-plan.md`](./fault-attribution-plan.md).
-- [x] NPC Notary (rooted villager) + Sealing Table, and a lighter-weight async negotiation mailbox —
-      `/oathbound-notary install <name>` spawns a rooted, invulnerable Villager; right-clicking it opens
-      a small hub GUI to start a new named-party oath draft (type the counterparty's name in chat) or
-      review oaths proposed to you, wherever they were sent from. The Sealing Table (right-click the
-      configured block, a lectern by default) is a face-to-face shortcut straight to the draft prompt.
-      Proposals now also respect a per-recipient pending-offer cap and auto-void (neutral, no Honor
-      change) after a configurable number of days unanswered. **Scope note:** this deliberately does not
-      implement the master plan's full `DRAFT → OFFERED → COUNTERED → ...` negotiation state machine —
-      recipients still only Sign or Decline a proposal (the existing pending-oath board), not edit and
-      counter-offer it. True counter-offering is left for a later pass.
-- [x] Public Oath Board (regional + capital) — right-click the configured block (an oak sign by
-      default) to open a hub: browse recent witnessed activity, bind the board to a group you're a
-      member of (regional - shows postings where either party is a group member), or make it capital
-      (unbound - shows everything). Postings aren't a separately stored feed; the feed GUI live-queries
-      the Ledger each time it's opened, exactly like every other board screen in this plugin. Only
-      *witnessed* oaths post (sealed, fulfilled, or broken - proposing/activating/voiding stay silent),
-      which required adding an actual witnessing flow: the oath builder GUI now has an "Add Witness"
-      button (type a name in chat) alongside its clause buttons, since nothing previously called
-      `OathService.addWitness`. A witnessed Blood Oath breaking additionally broadcasts a server-wide
-      message - the design doc's "special/dramatic formatting, possibly a broadcast" - while every other
-      posting (sealed, fulfilled, non-blood breaks) is only visible by browsing a board, not broadcast,
-      to avoid chat spam. **Not implemented:** "significant Honor tier crossings" as board postings -
-      unlike oath state transitions, a tier crossing isn't reconstructable from the Ledger alone and
-      would need its own persisted feed; left for a later pass. Altar desecration postings are out of
-      scope until Altar desecration itself exists.
-- [x] Altar sacrifice ritual (Power accrual), decay, vulnerability tiers, desecration outcomes,
-      reconsecration cooldown, and claim nesting/overlap resolution — right-clicking a consecrated
-      altar's barrel opens a chest-GUI sacrifice interface; only enchanted items count as artifacts,
-      valued purely off their enchantment profile (base weight = a configurable scale divided by each
-      enchantment's max level, so maxing out any enchantment is worth the same regardless of item type,
-      *within the same rarity* - `altar.enchantment-rarity-multiplier` then scales that ceiling by a
-      configurable multiplier per COMMON/UNCOMMON/RARE/VERY_RARE bucket, so a rare enchantment is worth
-      more than a common one even when both are equally maxed out; rarity is bucketed from
-      `Enchantment.getWeight()` rather than Bukkit's own `getRarity()`/`EnchantmentRarity`, which are
-      deprecated for removal on the Paper API version this plugin builds against),
-      summed per item with each repeated enchantment type within one sacrifice batch discounted by a
-      configurable per-repeat multiplier to discourage volume-stuffing (the rarity multiplier applies
-      once per enchantment type, not per repeat), and consumed permanently on
-      confirm. A freshly-consecrated altar starts at a configurable Power (`altar.starting-power`,
-      default 150 - comfortably above the Decaying threshold, so it's fully protected from the moment
-      it's placed rather than reading Critical before its owner can sacrifice anything; a one-time grace
-      baseline, not a real sacrifice, decaying on the normal clock; set to 0 for the old zero-grace
-      behavior). Power is never stored as a raw counter - like radius, it's a live function recomputed
-      from each altar's last-sacrifice baseline and a configurable "days full-to-empty" decay rate, so a
-      single large sacrifice always outlasts the same total value drip-fed across several smaller ones
-      (decay eats the gap between deposits). Three vulnerability tiers (Normal, Decaying, Critical) gate
-      everything else: crossing into Decaying below a configurable warning threshold fires a login nudge
-      to the owner; only below a configurable critical threshold does protection actually drop to zero
-      and the barrel become interactable for an outcome - Destroy (a Desecration: Honor penalty for the
-      breaker, a server-wide chat broadcast mirroring the existing Blood-Oath-break broadcast, and the
-      altar record is deleted outright, requiring the barrel/capstone/candle structure to be physically
-      rebuilt, not just re-funded) or Loot (XP orbs worth the most recent single sacrifice's value,
-      configurable conversion rate, no Honor penalty by default). Any successful top-up - recovering
-      from Critical or a fresh reconsecration - starts a configurable cooldown (baseline 5 minutes)
-      during which protection and surface monster-spawn suppression both stay suppressed even though
-      Power/radius already read as sufficient, closing the panic-deposit-mid-raid loophole. New-altar
-      placement is blocked if it overlaps an existing altar of the same or smaller `GroupTier`
-      (Individual < Company < Town < Region < Kingdom) but is explicitly allowed to nest inside a
-      strictly larger one (federating under a liege); this check runs once, at consecration time, and a
-      larger claim later shrinking from decay never retroactively invalidates anything already nested
-      inside it. The separate, ongoing "which claim's rules apply here" build-gating lookup is unchanged
-      in shape (still smallest live radius wins) but now tie-breaks by smallest `GroupTier` when radii
-      match exactly. An Oath Board posting for decay warnings/desecration was considered and deliberately
-      skipped, same reasoning as the Honor-tier-crossing gap noted above - not reconstructable from the
-      Ledger, would need its own persisted feed; the chat broadcast covers the "dramatic" requirement on
-      its own, and an ambient in-world signal is left for the existing Polish-pass roadmap bullet.
-      Multiple altars per owner were already fully independent (separate Power/radius/decay/cooldown per
-      record) with no extra work needed.
-- [x] Villager Shops — thirteen `/oathbound-<role>` commands, one per vanilla `Villager.Profession` that
-      actually trades, each spawning the same rooted/invulnerable Villager trick as the Notary but skinned
-      for its role via `setProfession`. Right-clicking one opens a fixed buy/sell chest menu (not a
-      per-instance builder) backed by an admin-edited list of items and prices per role in `config.yml`;
-      transactions go through the existing `EconomyService`, the same native currency the rest of the
-      plugin uses.
-- [x] Bounty / Kill Contracts — the condition-engine hookup for `KillCountClause` itself first: an
-      Oath's kill-count clause resolves once `DeathTracker` confirms the required death count for its
-      target, the same machinery `Condition.DeathCount` already provided, since resolving its condition
-      *is* fulfilling it (no execution side effect of its own, unlike Transfer/Escrow). Bounties
-      themselves are deliberately **not** built on `Oath`/`ConditionEngine` - a new `bounty` package with
-      its own `BountyService`/`BanishmentService` instead, since a bounty's victim never consents
-      (Oaths require a PROPOSED→SEALED handshake), its reward recipient is whoever turns a head in rather
-      than a party named at draft time, and per-head installment payout is fundamentally incremental,
-      which `ConditionEngine`'s release-schedule model deliberately doesn't support. A Notary's hub gains
-      a Bounty Board: quantity/group targeting (validated against current member count, capped there),
-      heat-scaling Notary fees (live-computed like Altar Power, never persisted, decaying over a
-      configurable window) with a hard 24h placement cap and a breach discount (approximated as "any
-      oath between the pair went `BROKEN` recently," since the Ledger has no fault-attribution concept -
-      same known limitation as Honor, see [`fault-attribution-plan.md`](./fault-attribution-plan.md)),
-      and head-return fulfillment (a qualifying kill force-drops a
-      tagged `PLAYER_HEAD`; turning it in at any Notary pays out, per-head for group contracts, with no
-      kill-attribution tracking at all). A qualifying kill also starts or extends (never resets) a
-      banishment sentence to a fixed, admin-built End pen (`/oathbound-debug banishment set-pen`),
-      real-hours scaled by the bounty amount just paid and clamped to a min/max, stacking capped at a
-      configurable maximum total duration; the pen holds the player across logout, and release
-      auto-teleports them back to where they died, checked on a periodic sweep and on login for sentences
-      that elapsed while offline. A group bounty's required quantity auto-decrements when a targeted
-      member is flagged abandoned via a live `OfflinePlayer.getLastPlayed()` inactivity check (no new
-      persisted flag). The same board also lists standing, repeatable, admin-authored **PvE contracts**
-      (`config.yml`'s `pve-contracts`, not persisted - only per-player progress is) using native Bukkit
-      kill-attribution instead, since there's no bounty-style attribution problem to sidestep for a
-      server-owned economy tap. A one-time login notice (not every-login spam) tells a player they have a
-      bounty on their head; `/oathbound-bounty list [player]` is the always-available pull command, and
-      `/oathbound-bounty notify off` opts out of the notice.
-- [x] Ceremony Designer — a templated, item-driven shortcut for binding a group-to-individual agreement
-      with no menus or commands on the receiving end: `/oathbound-debug ceremony give <templateId>
-      <groupId> [player]` hands out a tagged item; right-clicking another player with it (or right-
-      clicking it onto an already-placed pressure plate/button to bind the ceremony there instead, so
-      the binder doesn't need to be online for the trigger to fire) speaks the template's `dialogue` to
-      the target in chat, and a `confirm-phrases` reply immediately materializes the template's clauses
-      (`TransferSpec` gated on `PvpDeathCount`, `TributeSpec` as an immediate-release `EscrowClause`,
-      `MobKillSpec`, `CustomFlagSpec`, and `DiplomacySpec` — the last sets a diplomatic relation between
-      the liege group and the target's own resolved territory group, enforcing the same REGION/KINGDOM-
-      tier-root restriction the debug diplomacy commands enforce, see Diplomacy below) into a real Oath,
-      taken straight through `DRAFT → PROPOSED → SEALED → ACTIVE` in one call since both sides already
-      consented via the ceremony itself. Ships with one live default template, `welcome-pact` — a zero-
-      mechanical-stakes onboarding pledge (RP-only `CustomFlagSpec`, no transfer/tribute/escrow/
-      diplomacy clause) safe to hand any new player without review; the fuller `fealty` example (real
-      land-transfer/tribute/alliance stakes) ships commented out as a template for admins who want more.
-      **Known gaps:** no admin command to unbind a block trigger short of physically breaking the block,
-      and no cooldown/rate-limit on re-triggering a plate beyond an "already has a pending prompt" guard.
-- [ ] Fault attribution — lets a manually-declared `BROKEN` breach (still the only way `BROKEN` is
-      reached today - see the Honor bullet above) name which party/parties were actually at fault, so
-      Honor loss/the Blood Oath curse debuff apply only to them instead of every party symmetrically,
-      and the Bounty breach discount can check "was the target specifically at fault" instead of "did
-      any breach happen between this pair." Deliberately does not add automated deadline/breach
-      detection (a separate, already-noted gap) or try to address a lopsided-but-honestly-*fulfilled*
-      oath (not a fault question - nobody broke anything). Fully researched, not yet built - see
-      [`fault-attribution-plan.md`](./fault-attribution-plan.md).
-- [ ] Polish pass: particle/sound effects, Notary flavor/skin system, full config-surface tuning
+### Not yet built
+
+- [ ] Fault attribution (see above and `fault-attribution-plan.md`)
+- [ ] In-game group invite/membership management - a group has exactly one member (its founder) until
+      this ships
+- [ ] Polish pass: particle/sound effects, full config-surface tuning
+
+### Deliberately cut (previously built, removed in a rescope)
+
+Territory claiming (Altar consecration/Power/decay/desecration) and PvP kill contracts
+(Bounty/Banishment/PvE contracts) were fully built at one point but have been removed - they duplicated
+what dedicated plugins already do better. WorldGuard is the recommended replacement for territory
+protection (see [WorldGuard Integration](docs/worldguard-integration.md)); no replacement is bundled for
+bounty/kill-contract mechanics, though a dedicated PvP/bounty plugin can be paired instead. The "Notary"
+NPC concept was folded into the general anchored-villager-NPC system rather than removed outright - see
+[Anchored villager NPCs](#anchored-villager-npcs) above.
 
 ### Deliberately deferred (see master plan)
 
 - Election Oaths — fully researched (condition-engine changes, a new `election` domain package,
   GUI/command/persistence surface) but deliberately deferred as too large a single pass; the
   implementation plan is saved in [`election-oaths-plan.md`](./election-oaths-plan.md) if revisited.
-- Notary skin/flavor customization
 - Per-relationship trust tracking (only a single global Honor score is planned)
-- Release-oath hooks for reducing active banishment sentences
-- Altar Power pooling across multiple altars
-- Any siege/conquest mechanics beyond altar desecration
 
 ---
 
@@ -821,7 +564,8 @@ Tracking against the [master design plan](./oathbound-master-plan.md)'s build or
 ./gradlew runServer      # boot a local Paper test server with the plugin installed
 ```
 
-The domain layer (`oath`, `group`, `economy`, `altar`, `contract`, `bounty` packages) has zero Bukkit
+The domain layer (`oath`, `group`, `economy`, `contract`, `diplomacy` packages) has zero Bukkit
 dependencies by design — it's plain, JUnit-testable Java. Bukkit-specific glue (commands, event
 listeners, inventory GUIs, item (de)serialization) lives in its own packages (`command`, `listener`,
-`gui`, `bukkit`) on top of that domain layer.
+`gui`, `bukkit`) on top of that domain layer. `worldguard` isolates every WorldGuard/WorldEdit API call
+behind a soft-dependency wrapper so the rest of the plugin never touches those types directly.

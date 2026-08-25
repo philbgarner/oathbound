@@ -6,7 +6,6 @@ import com.google.gmail.philbgarner.oathbound.group.EntityRef;
 import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroupRef;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -30,7 +29,8 @@ public sealed interface Clause {
     record CustomFlagClause(String text) implements Clause {
     }
 
-    /** Stub: fully wired in the Bounty/Kill Contracts phase (heat-scaling fees, banishment, head-return fulfillment). */
+    /** Resolves once {@code quantity} tracked deaths of {@code target} have happened since activation -
+     * backed by {@link DeathTracker}, same condition machinery {@link Condition.DeathCount} evaluates. */
     record KillCountClause(EntityRef target, int quantity) implements Clause {
     }
 
@@ -51,25 +51,5 @@ public sealed interface Clause {
     }
 
     record ReleaseStep(double fraction, Condition condition) {
-    }
-
-    /** Reduces (or fully forgives) {@code target}'s active banishment sentence once {@code condition} is
-     * met - the "release oath" the master plan describes: an ally negotiates with whoever holds authority
-     * over the sentence via the normal Oath system, rather than the sentence being a pure fire-and-forget
-     * timer. This is the Oath-side caller for the {@code Banishment.reduceSentence} seam that was left
-     * deliberately unused until this clause existed to drive it - see that method's javadoc.
-     *
-     * <p>{@code condition} decides what the negotiation actually requires - {@code Immediate} for a
-     * pre-agreed pardon, {@code ManualConfirm} for needing the placer's live approval, or a sibling
-     * {@code EscrowClause}/{@code PaymentReceived} for a ransom-gated release - this clause doesn't
-     * hardcode that, same as {@link TransferClause} and {@link DiplomacyClause} don't hardcode theirs.
-     * {@code target} does not need to be a party to the oath - the ally negotiates on their behalf.
-     *
-     * @param reduction   ignored when {@code fullRelease} is true; otherwise the amount cut from the
-     *                    remaining sentence (never past "already free" - see {@code reduceSentence}).
-     * @param fullRelease when true, the entire remaining sentence is forgiven regardless of {@code reduction}.
-     */
-    record BanishmentReleaseClause(PlayerRef target, Duration reduction, boolean fullRelease, Condition condition)
-            implements Clause {
     }
 }

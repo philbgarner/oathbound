@@ -54,8 +54,6 @@ flowchart TD
   relation on a bare Individual-tier group the way the raw domain model would otherwise allow. Sealing
   fails with a `CeremonyValidationException` (shown to both parties, oath not created) if either side's
   root isn't REGION/KINGDOM tier.
-- No connection exists to Altars anywhere in the ceremony code (the altar-based banishment prayer
-  ritual is a separate feature reachable from the barrel itself - see [Altars](altar.md)).
 - **Confirmation is click-based, not free text.** An earlier version matched the target's next chat
   message against configured `confirm-phrases`/`decline-phrases` strings - a real gap, since an
   unrelated message that happened to equal one (a bare "yes" answering someone else's question,

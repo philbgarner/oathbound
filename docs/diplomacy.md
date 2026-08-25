@@ -64,9 +64,8 @@ flowchart TD
   Declaring war does not require the other side's consent at all.
 - `NEUTRAL` cannot be set via a treaty clause - it's purely the implicit default for an unrecorded
   pair.
-- **Known limitation:** PvP restriction is currently the *only* mechanical consequence of a relation.
-  No build/claim interaction, no altar interaction, and no automatic Oath-Board posting exists yet for
-  a diplomacy change.
+- **Known limitation:** PvP restriction is currently the *only* mechanical consequence of a relation - no
+  build/claim interaction and no automatic Oath-Board posting exists yet for a diplomacy change.
 
 ## Update this diagram when touching
 

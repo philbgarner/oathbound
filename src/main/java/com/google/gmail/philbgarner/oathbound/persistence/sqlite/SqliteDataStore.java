@@ -1,10 +1,6 @@
 package com.google.gmail.philbgarner.oathbound.persistence.sqlite;
 
-import com.google.gmail.philbgarner.oathbound.altar.Altar;
 import com.google.gmail.philbgarner.oathbound.board.OathBoard;
-import com.google.gmail.philbgarner.oathbound.bounty.Banishment;
-import com.google.gmail.philbgarner.oathbound.bounty.Bounty;
-import com.google.gmail.philbgarner.oathbound.bounty.PveContractProgress;
 import com.google.gmail.philbgarner.oathbound.ceremony.CeremonyTrigger;
 import com.google.gmail.philbgarner.oathbound.contract.TradeOffer;
 import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticRelation;
@@ -14,7 +10,6 @@ import com.google.gmail.philbgarner.oathbound.economy.PlayerBalance;
 import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
 import com.google.gmail.philbgarner.oathbound.honor.PlayerHonor;
-import com.google.gmail.philbgarner.oathbound.notary.Notary;
 import com.google.gmail.philbgarner.oathbound.oath.DeathRecord;
 import com.google.gmail.philbgarner.oathbound.oath.EscrowClaim;
 import com.google.gmail.philbgarner.oathbound.oath.LedgerEntry;
@@ -29,6 +24,7 @@ import com.google.gmail.philbgarner.oathbound.persistence.dto.TradeOfferDto;
 import com.google.gmail.philbgarner.oathbound.persistence.json.GsonFactory;
 import com.google.gmail.philbgarner.oathbound.protection.Protection;
 import com.google.gmail.philbgarner.oathbound.villager.VillagerNpc;
+import com.google.gmail.philbgarner.oathbound.worldguard.GroupRegionLink;
 import com.google.gson.Gson;
 
 import java.io.IOException;
@@ -45,11 +41,9 @@ import java.sql.Statement;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 
 public final class SqliteDataStore implements DataStore {
@@ -68,7 +62,8 @@ public final class SqliteDataStore implements DataStore {
             "db/migrations/0011_bounty.sql",
             "db/migrations/0012_mob_kill_records.sql",
             "db/migrations/0013_diplomacy.sql",
-            "db/migrations/0014_ceremony_triggers.sql"
+            "db/migrations/0014_ceremony_triggers.sql",
+            "db/migrations/0015_group_region_links.sql"
     );
 
     private final Path databaseFile;
@@ -399,58 +394,6 @@ public final class SqliteDataStore implements DataStore {
     }
 
     @Override
-    public synchronized void saveAltar(Altar altar) throws DataStoreException {
-        String json = gson.toJson(altar);
-        try (PreparedStatement stmt = connection.prepareStatement(
-                "INSERT INTO altars(id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data")) {
-            stmt.setString(1, altar.id().toString());
-            stmt.setString(2, json);
-            stmt.executeUpdate();
-        } catch (SQLException e) {
-            throw new DataStoreException("Failed to save altar " + altar.id(), e);
-        }
-    }
-
-    @Override
-    public synchronized Optional<Altar> loadAltar(UUID id) throws DataStoreException {
-        try (PreparedStatement stmt = connection.prepareStatement("SELECT data FROM altars WHERE id = ?")) {
-            stmt.setString(1, id.toString());
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (!rs.next()) {
-                    return Optional.empty();
-                }
-                return Optional.of(gson.fromJson(rs.getString(1), Altar.class));
-            }
-        } catch (SQLException e) {
-            throw new DataStoreException("Failed to load altar " + id, e);
-        }
-    }
-
-    @Override
-    public synchronized List<Altar> loadAllAltars() throws DataStoreException {
-        List<Altar> result = new ArrayList<>();
-        try (Statement stmt = connection.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT data FROM altars")) {
-            while (rs.next()) {
-                result.add(gson.fromJson(rs.getString(1), Altar.class));
-            }
-        } catch (SQLException e) {
-            throw new DataStoreException("Failed to load all altars", e);
-        }
-        return result;
-    }
-
-    @Override
-    public synchronized void deleteAltar(UUID id) throws DataStoreException {
-        try (PreparedStatement stmt = connection.prepareStatement("DELETE FROM altars WHERE id = ?")) {
-            stmt.setString(1, id.toString());
-            stmt.executeUpdate();
-        } catch (SQLException e) {
-            throw new DataStoreException("Failed to delete altar " + id, e);
-        }
-    }
-
-    @Override
     public synchronized void saveTradeOffer(TradeOffer offer) throws DataStoreException {
         String json = gson.toJson(TradeOfferDto.from(offer));
         try (PreparedStatement stmt = connection.prepareStatement(
@@ -628,43 +571,6 @@ public final class SqliteDataStore implements DataStore {
     }
 
     @Override
-    public synchronized void saveNotary(Notary notary) throws DataStoreException {
-        String json = gson.toJson(notary);
-        try (PreparedStatement stmt = connection.prepareStatement(
-                "INSERT INTO notaries(id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data")) {
-            stmt.setString(1, notary.id().toString());
-            stmt.setString(2, json);
-            stmt.executeUpdate();
-        } catch (SQLException e) {
-            throw new DataStoreException("Failed to save notary " + notary.id(), e);
-        }
-    }
-
-    @Override
-    public synchronized List<Notary> loadAllNotaries() throws DataStoreException {
-        List<Notary> result = new ArrayList<>();
-        try (Statement stmt = connection.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT data FROM notaries")) {
-            while (rs.next()) {
-                result.add(gson.fromJson(rs.getString(1), Notary.class));
-            }
-        } catch (SQLException e) {
-            throw new DataStoreException("Failed to load all notaries", e);
-        }
-        return result;
-    }
-
-    @Override
-    public synchronized void deleteNotary(UUID id) throws DataStoreException {
-        try (PreparedStatement stmt = connection.prepareStatement("DELETE FROM notaries WHERE id = ?")) {
-            stmt.setString(1, id.toString());
-            stmt.executeUpdate();
-        } catch (SQLException e) {
-            throw new DataStoreException("Failed to delete notary " + id, e);
-        }
-    }
-
-    @Override
     public synchronized void saveOathBoard(OathBoard board) throws DataStoreException {
         String json = gson.toJson(board);
         try (PreparedStatement stmt = connection.prepareStatement(
@@ -776,149 +682,39 @@ public final class SqliteDataStore implements DataStore {
     }
 
     @Override
-    public synchronized void saveBounty(Bounty bounty) throws DataStoreException {
-        String json = gson.toJson(bounty);
+    public synchronized void saveGroupRegionLink(GroupRegionLink link) throws DataStoreException {
+        String json = gson.toJson(link);
         try (PreparedStatement stmt = connection.prepareStatement(
-                "INSERT INTO bounties(id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data")) {
-            stmt.setString(1, bounty.id().toString());
+                "INSERT INTO group_region_links(id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data")) {
+            stmt.setString(1, link.id().toString());
             stmt.setString(2, json);
             stmt.executeUpdate();
         } catch (SQLException e) {
-            throw new DataStoreException("Failed to save bounty " + bounty.id(), e);
+            throw new DataStoreException("Failed to save group region link " + link.id(), e);
         }
     }
 
     @Override
-    public synchronized List<Bounty> loadAllBounties() throws DataStoreException {
-        List<Bounty> result = new ArrayList<>();
+    public synchronized List<GroupRegionLink> loadAllGroupRegionLinks() throws DataStoreException {
+        List<GroupRegionLink> result = new ArrayList<>();
         try (Statement stmt = connection.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT data FROM bounties")) {
+             ResultSet rs = stmt.executeQuery("SELECT data FROM group_region_links")) {
             while (rs.next()) {
-                result.add(gson.fromJson(rs.getString(1), Bounty.class));
+                result.add(gson.fromJson(rs.getString(1), GroupRegionLink.class));
             }
         } catch (SQLException e) {
-            throw new DataStoreException("Failed to load all bounties", e);
+            throw new DataStoreException("Failed to load all group region links", e);
         }
         return result;
     }
 
     @Override
-    public synchronized void deleteBounty(UUID id) throws DataStoreException {
-        try (PreparedStatement stmt = connection.prepareStatement("DELETE FROM bounties WHERE id = ?")) {
+    public synchronized void deleteGroupRegionLink(UUID id) throws DataStoreException {
+        try (PreparedStatement stmt = connection.prepareStatement("DELETE FROM group_region_links WHERE id = ?")) {
             stmt.setString(1, id.toString());
             stmt.executeUpdate();
         } catch (SQLException e) {
-            throw new DataStoreException("Failed to delete bounty " + id, e);
+            throw new DataStoreException("Failed to delete group region link " + id, e);
         }
-    }
-
-    @Override
-    public synchronized void savePveContractProgress(PveContractProgress progress) throws DataStoreException {
-        String json = gson.toJson(progress);
-        try (PreparedStatement stmt = connection.prepareStatement(
-                "INSERT INTO pve_contract_progress(id, data) VALUES (?, ?) "
-                        + "ON CONFLICT(id) DO UPDATE SET data = excluded.data")) {
-            stmt.setString(1, progress.id().toString());
-            stmt.setString(2, json);
-            stmt.executeUpdate();
-        } catch (SQLException e) {
-            throw new DataStoreException("Failed to save PvE contract progress " + progress.id(), e);
-        }
-    }
-
-    @Override
-    public synchronized List<PveContractProgress> loadAllPveContractProgress() throws DataStoreException {
-        List<PveContractProgress> result = new ArrayList<>();
-        try (Statement stmt = connection.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT data FROM pve_contract_progress")) {
-            while (rs.next()) {
-                result.add(gson.fromJson(rs.getString(1), PveContractProgress.class));
-            }
-        } catch (SQLException e) {
-            throw new DataStoreException("Failed to load all PvE contract progress", e);
-        }
-        return result;
-    }
-
-    @Override
-    public synchronized void deletePveContractProgress(UUID id) throws DataStoreException {
-        try (PreparedStatement stmt = connection.prepareStatement("DELETE FROM pve_contract_progress WHERE id = ?")) {
-            stmt.setString(1, id.toString());
-            stmt.executeUpdate();
-        } catch (SQLException e) {
-            throw new DataStoreException("Failed to delete PvE contract progress " + id, e);
-        }
-    }
-
-    @Override
-    public synchronized void saveBanishment(Banishment banishment) throws DataStoreException {
-        String json = gson.toJson(banishment);
-        try (PreparedStatement stmt = connection.prepareStatement(
-                "INSERT INTO banishments(id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data")) {
-            stmt.setString(1, banishment.id().toString());
-            stmt.setString(2, json);
-            stmt.executeUpdate();
-        } catch (SQLException e) {
-            throw new DataStoreException("Failed to save banishment " + banishment.id(), e);
-        }
-    }
-
-    @Override
-    public synchronized List<Banishment> loadAllBanishments() throws DataStoreException {
-        List<Banishment> result = new ArrayList<>();
-        try (Statement stmt = connection.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT data FROM banishments")) {
-            while (rs.next()) {
-                result.add(gson.fromJson(rs.getString(1), Banishment.class));
-            }
-        } catch (SQLException e) {
-            throw new DataStoreException("Failed to load all banishments", e);
-        }
-        return result;
-    }
-
-    @Override
-    public synchronized void deleteBanishment(UUID id) throws DataStoreException {
-        try (PreparedStatement stmt = connection.prepareStatement("DELETE FROM banishments WHERE id = ?")) {
-            stmt.setString(1, id.toString());
-            stmt.executeUpdate();
-        } catch (SQLException e) {
-            throw new DataStoreException("Failed to delete banishment " + id, e);
-        }
-    }
-
-    @Override
-    public synchronized void setBountyNotificationOptOut(UUID playerId, boolean optedOut) throws DataStoreException {
-        try {
-            if (optedOut) {
-                try (PreparedStatement stmt = connection.prepareStatement(
-                        "INSERT INTO bounty_notification_opt_outs(player_id) VALUES (?) ON CONFLICT(player_id) DO NOTHING")) {
-                    stmt.setString(1, playerId.toString());
-                    stmt.executeUpdate();
-                }
-            } else {
-                try (PreparedStatement stmt = connection.prepareStatement(
-                        "DELETE FROM bounty_notification_opt_outs WHERE player_id = ?")) {
-                    stmt.setString(1, playerId.toString());
-                    stmt.executeUpdate();
-                }
-            }
-        } catch (SQLException e) {
-            throw new DataStoreException("Failed to update bounty notification opt-out for " + playerId, e);
-        }
-    }
-
-    @Override
-    public synchronized Set<UUID> loadBountyNotificationOptOuts() throws DataStoreException {
-        Set<UUID> result = new HashSet<>();
-        try (Statement stmt = connection.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT player_id FROM bounty_notification_opt_outs")) {
-            while (rs.next()) {
-                result.add(UUID.fromString(rs.getString(1)));
-            }
-        } catch (SQLException e) {
-            throw new DataStoreException("Failed to load bounty notification opt-outs", e);
-        }
-        return result;
     }
 }

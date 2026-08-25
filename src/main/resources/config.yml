@@ -19,63 +19,6 @@ escrow:
   # recipient. Currency releases are unaffected - only unclaimed items expire.
   claim-expiry-days: 30
 
-altar:
-  # Block required directly on top of the barrel, with a candle placed on top of that, to
-  # consecrate an altar. Placing the candle is what triggers altar creation.
-  capstone-material: OBSIDIAN
-  # Radius (in blocks) = power-radius-scale * tier-multiplier * sqrt(current Power).
-  power-radius-scale: 4.0
-  tier-radius-multiplier:
-    INDIVIDUAL: 1.0
-    COMPANY: 1.25
-    TOWN: 1.5
-    REGION: 2.0
-    KINGDOM: 3.0
-  # Days of neglect for an altar's Power to decay from its last-sacrifice baseline down to zero. Each
-  # altar's own most recent top-up total is its own "full" - this is a flat rate, not tied to a global
-  # power cap.
-  decay-days: 5
-  # At or below this live Power, an altar is Critical: protection radius drops to zero and the barrel
-  # becomes interactable for a Destroy (desecration) or Loot outcome.
-  critical-threshold: 10
-  # At or below this live Power (but above critical-threshold), an altar is Decaying: still fully
-  # protected, but the owner gets a login warning.
-  decaying-threshold: 100
-  # Power a freshly-consecrated altar starts with - a one-time grace baseline, not a real sacrifice
-  # (it decays on the normal clock like any other Power, and can't be Looted for XP). Default is
-  # comfortably above decaying-threshold so a brand-new altar reads Normal, not Critical, from the
-  # moment it's placed - a new owner has a real window to sacrifice something before protection lapses.
-  # Set to 0 to restore the old zero-grace behavior.
-  starting-power: 150
-  # XP orbs dropped when looting a Critical altar's barrel = this * the value of the most recent
-  # completed sacrifice (not lifetime total).
-  xp-loot-conversion-rate: 1.0
-  # Seconds after any successful top-up (recovering from Critical, or a fresh post-desecration
-  # reconsecration) before protection re-engages, even if Power already reads as sufficient.
-  reconsecration-cooldown-seconds: 300
-  # Sacrifice valuation: an enchantment's base weight = this scale divided by its max level, so maxing
-  # out any single enchantment is worth the same as maxing out any other enchantment OF THE SAME
-  # RARITY, regardless of item type or how many levels it has - see enchantment-rarity-multiplier below
-  # for how rarity then scales that ceiling further.
-  enchantment-weight-scale: 10.0
-  # Each repeated occurrence of the same enchantment type within one sacrifice batch is multiplied by
-  # this factor (compounding), to discourage volume-stuffing many low-value items in one deposit.
-  repeat-enchantment-decay: 0.5
-  # Multiplies an enchantment's normalized weight by how significant Bukkit itself considers it
-  # (Enchantment.getRarity()) - a maxed-out enchantment is worth enchantment-weight-scale * this
-  # multiplier, so a rare/powerful enchantment is worth more than a common one even when both are
-  # equally "maxed out" by the level-normalization above. Keys are COMMON/UNCOMMON/RARE/VERY_RARE.
-  enchantment-rarity-multiplier:
-    COMMON: 1.0
-    UNCOMMON: 1.5
-    RARE: 2.5
-    VERY_RARE: 4.0
-  # Honor penalty applied to whoever destroys a Critical altar's barrel (a Desecration).
-  desecration-honor-penalty: 50
-  # Honor penalty applied to whoever loots (rather than destroys) a Critical altar's barrel. Zero by
-  # default - looting isn't punished unless a server admin wants to discourage even that.
-  loot-honor-penalty: 0
-
 protection:
   # Item that must be held to lock/unlock a chest or door - right-click the block while holding
   # this item to open the group picker. Any other item (or empty hand) is a normal interaction,
@@ -112,8 +55,14 @@ notary:
   # Notary NPC offers.
   sealing-table-material: LECTERN
   # Max named-party oaths a single player can have sitting PROPOSED (addressed to them) at once,
-  # to prevent mailbox spam.
+  # to prevent mailbox spam. Kept as a backstop against many different senders; see
+  # pending-offer-cap-per-sender-recipient below for the per-sender limit that actually stops one
+  # player from filling this cap alone.
   pending-offer-cap-per-player: 10
+  # Max named-party oaths a single sender can have sitting PROPOSED to the same recipient at once - a
+  # single trivial no-stakes oath costs nothing to propose, so without this a lone sender could otherwise
+  # use up the whole pending-offer-cap-per-player above by themselves and lock out every other sender.
+  pending-offer-cap-per-sender-recipient: 2
   # Days a named-party oath can sit PROPOSED unanswered before it's automatically voided (neutral,
   # no Honor change - same as any other mutually-cancelled oath).
   negotiation-expiry-days: 7
@@ -125,65 +74,6 @@ oath-board:
   # How many of the most recent Ledger entries to scan when building a board's feed. Not a cap on
   # how many postings can show - just how far back the live query looks.
   feed-size: 50
-
-bounty:
-  # Notary fee for placing a bounty, before heat-scaling - separate from the reward itself.
-  fee-base: 100
-  # Fee multiplier per point of "heat" (how many active/recent bounties already exist on the target) -
-  # fee = fee-base * (1 + heat * this). The first bounty on a target is cheap; stacking a fifth is not.
-  heat-fee-multiplier: 0.5
-  # Hours over which a bounty's contribution to a target's heat linearly decays to zero.
-  heat-decay-hours: 72
-  # Hard cap on bounties a single player can place in a rolling 24h window, independent of heat cost.
-  max-placements-per-24h: 3
-  # If the target broke an oath with the placer within this many days, the placer gets a fee discount -
-  # approximated as "any oath between the pair transitioned to BROKEN in this window," since the Ledger
-  # has no fault-attribution concept (same known limitation as the Honor system).
-  breach-discount-window-days: 14
-  # Fraction knocked off the fee when the discount above applies (0.5 = half price).
-  breach-discount-fraction: 0.5
-  # A group-bounty-targeted member counts as "abandoned" (auto-decrementing the contract's required
-  # quantity by one) once their last-played time exceeds this many days.
-  abandon-inactivity-days: 30
-
-banishment:
-  # Sentence length = bountyAmountPaid / this (hours), before the min/max clamp below.
-  hours-per-currency-unit: 50
-  min-hours: 1
-  max-hours: 72
-  # A subsequent qualifying bounty kill while already serving a sentence extends the remaining time
-  # (never resets it), but the total duration measured from when the sentence first began can never
-  # exceed this many hours - further stacking beyond the cap is absorbed.
-  stack-cap-hours: 168
-  # Hours cut from a banished player's remaining sentence per point of enchanted-item sacrifice value,
-  # via the "pray for intercession" ritual at any consecrated (non-Critical) altar - shift+right-click the
-  # barrel to open the ritual instead of the normal sacrifice screen. Same currency and valuation as a
-  # normal Power sacrifice (altar.enchantment-weight-scale etc.), spent on a different ledger. A large
-  # enough sacrifice can pardon the remaining sentence outright.
-  prayer-hours-per-power: 0.2
-  # Fixed destination for the purpose-built End banishment pen - build it by hand (contained, safe from
-  # Endermen/void, basic survival amenities), then run /oathbound-debug banishment set-pen while standing
-  # at the release point to record these coordinates instead of editing them by hand.
-  pen:
-    world: world_the_end
-    x: 0.5
-    y: 64.0
-    z: 0.5
-    yaw: 0.0
-    pitch: 0.0
-
-# Standing, repeatable, admin-authored PvE kill contracts (an economy tap) - browsable from any Notary's
-# Bounty Board. Reward currency must be one of economy.currencies. Player progress against these is real
-# state and persists; the definitions themselves are just config and can be edited freely.
-pve-contracts: []
-# Example:
-# pve-contracts:
-#   - id: spider-cull
-#     display-name: "Spider Cull"
-#     mob: SPIDER
-#     quantity: 20
-#     reward:
-#       coin: 200
 
 # Ceremony Designer templates - bind a group-to-individual agreement with a tagged item and a
 # right-click, no menus or commands. Give the item via
@@ -269,69 +159,3 @@ pvp:
   # a sealed Peace/Alliance treaty (or simply never having declared war) should actually mean something
   # mechanically, not just cosmetically. Set to false to restore free-for-all PvP regardless of relations.
   restrict-to-declared-wars: true
-
-villagers:
-  # Each role's shop NPCs all share one fixed buy/sell list, edited here - not a per-instance builder.
-  # 'sells' = the NPC sells to the player (player pays, receives the item).
-  # 'buys'  = the NPC buys from the player (player gives the item, receives currency).
-  # Currency is always the server's default currency (economy.currencies, first entry). Roles left
-  # with empty lists still install and open a (empty) shop menu - fill them in when ready.
-  fisherman:
-    sells:
-      - {material: COD, price: 2}
-      - {material: SALMON, price: 3}
-      - {material: FISHING_ROD, price: 15}
-    buys:
-      - {material: TROPICAL_FISH, price: 1}
-      - {material: PUFFERFISH, price: 1}
-  mason:
-    sells:
-      - {material: BRICK, price: 1}
-      - {material: STONE_BRICKS, price: 2}
-      - {material: CHISELED_STONE_BRICKS, price: 4}
-    buys:
-      - {material: STONE, price: 1}
-      - {material: COBBLESTONE, price: 1}
-  farmer:
-    sells:
-      - {material: BREAD, price: 3}
-      - {material: PUMPKIN_PIE, price: 5}
-      - {material: BONE_MEAL, price: 2}
-    buys:
-      - {material: WHEAT, price: 1}
-      - {material: CARROT, price: 1}
-      - {material: POTATO, price: 1}
-  librarian:
-    sells:
-      - {material: BOOK, price: 3}
-      - {material: PAPER, price: 1}
-      - {material: BOOKSHELF, price: 12}
-    buys:
-      - {material: WRITTEN_BOOK, price: 5}
-  armorer:
-    sells: []
-    buys: []
-  butcher:
-    sells: []
-    buys: []
-  cartographer:
-    sells: []
-    buys: []
-  cleric:
-    sells: []
-    buys: []
-  fletcher:
-    sells: []
-    buys: []
-  leatherworker:
-    sells: []
-    buys: []
-  shepherd:
-    sells: []
-    buys: []
-  toolsmith:
-    sells: []
-    buys: []
-  weaponsmith:
-    sells: []
-    buys: []

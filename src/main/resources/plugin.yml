@@ -4,58 +4,65 @@ main: com.google.gmail.philbgarner.oathbound.OathboundPlugin
 api-version: '26.2'
 author: philbgarner
 description: Diegetic, mechanically-binding agreements between players.
+softdepend: [WorldGuard]
 commands:
   oathbound-debug:
     description: Oathbound Phase 1 debug/testing commands.
     usage: /<command> <subcommand> [args...]
+    permission: oathbound.debug
   oathbound-trade:
     description: Open the Oathbound trade contract builder or board.
     usage: /<command> [board]
   oathbound-oath:
     description: Build and propose a named-party oath, review oaths proposed to you, or claim escrow.
     usage: /<command> <create <playerName> [blood]|pending|claim>
-  oathbound-notary:
-    description: Install a Notary NPC at your current location.
-    usage: /<command> install <name...>
-  oathbound-bounty:
-    description: List active bounties on a player, or toggle the login notice.
-    usage: /<command> [list [playerName]|notify <on|off>]
+  oathbound-group:
+    description: Found a Company, Town, Region, or Kingdom - the only player-facing way to create a
+      ProtectionGroup, needed before a chest or door can be locked to it - or link one to a WorldGuard
+      region, if WorldGuard is installed.
+    usage: /<command> <create <name> [tier]|link-region <groupId> <regionId>>
   oathbound-armorer:
-    description: Install an Armorer shop NPC at your current location.
+    description: Install an invulnerable, rooted Armorer villager (vanilla trades) at your current location.
     usage: /<command> install <name...>
   oathbound-butcher:
-    description: Install a Butcher shop NPC at your current location.
+    description: Install an invulnerable, rooted Butcher villager (vanilla trades) at your current location.
     usage: /<command> install <name...>
   oathbound-cartographer:
-    description: Install a Cartographer shop NPC at your current location.
+    description: Install an invulnerable, rooted Cartographer villager (vanilla trades) at your current location.
     usage: /<command> install <name...>
   oathbound-cleric:
-    description: Install a Cleric shop NPC at your current location.
+    description: Install an invulnerable, rooted Cleric villager (vanilla trades) at your current location.
     usage: /<command> install <name...>
   oathbound-farmer:
-    description: Install a Farmer shop NPC at your current location.
+    description: Install an invulnerable, rooted Farmer villager (vanilla trades) at your current location.
     usage: /<command> install <name...>
   oathbound-fisherman:
-    description: Install a Fisherman shop NPC at your current location.
+    description: Install an invulnerable, rooted Fisherman villager (vanilla trades) at your current location.
     usage: /<command> install <name...>
   oathbound-fletcher:
-    description: Install a Fletcher shop NPC at your current location.
+    description: Install an invulnerable, rooted Fletcher villager (vanilla trades) at your current location.
     usage: /<command> install <name...>
   oathbound-leatherworker:
-    description: Install a Leatherworker shop NPC at your current location.
+    description: Install an invulnerable, rooted Leatherworker villager (vanilla trades) at your current location.
     usage: /<command> install <name...>
   oathbound-librarian:
-    description: Install a Librarian shop NPC at your current location.
+    description: Install an invulnerable, rooted Librarian villager (vanilla trades) at your current location.
     usage: /<command> install <name...>
   oathbound-mason:
-    description: Install a Mason shop NPC at your current location.
+    description: Install an invulnerable, rooted Mason villager (vanilla trades) at your current location.
     usage: /<command> install <name...>
   oathbound-shepherd:
-    description: Install a Shepherd shop NPC at your current location.
+    description: Install an invulnerable, rooted Shepherd villager (vanilla trades) at your current location.
     usage: /<command> install <name...>
   oathbound-toolsmith:
-    description: Install a Toolsmith shop NPC at your current location.
+    description: Install an invulnerable, rooted Toolsmith villager (vanilla trades) at your current location.
     usage: /<command> install <name...>
   oathbound-weaponsmith:
-    description: Install a Weaponsmith shop NPC at your current location.
+    description: Install an invulnerable, rooted Weaponsmith villager (vanilla trades) at your current location.
     usage: /<command> install <name...>
+permissions:
+  oathbound.debug:
+    description: Access to Oathbound's Phase 1 debug/testing command surface (/oathbound-debug) - group
+      transfer, honor adjust, arbitrary oath construction, and every other admin/testing-only action that
+      doesn't have a player-facing UI yet.
+    default: op

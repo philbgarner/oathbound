@@ -1,7 +1,5 @@
 package com.google.gmail.philbgarner.oathbound.oath;
 
-import com.google.gmail.philbgarner.oathbound.bounty.Banishment;
-import com.google.gmail.philbgarner.oathbound.bounty.ReturnLocation;
 import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomacyService;
 import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticState;
 import com.google.gmail.philbgarner.oathbound.economy.Currency;
@@ -37,7 +35,6 @@ final class ConditionEngineTest {
     private Ledger ledger;
     private OathService oathService;
     private Map<UUID, ProtectionGroup> groups;
-    private Map<PlayerRef, Banishment> banishments;
     private OwnershipResolver ownershipResolver;
     private EconomyService economyService;
     private DeathTracker deathTracker;
@@ -51,7 +48,6 @@ final class ConditionEngineTest {
         ledger = new Ledger();
         oathService = new OathService(ledger);
         groups = new HashMap<>();
-        banishments = new HashMap<>();
         ownershipResolver = new OwnershipResolver(id -> Optional.ofNullable(groups.get(id)), 10);
         economyService = new EconomyService(List.of(coin));
         deathTracker = new DeathTracker();
@@ -60,14 +56,7 @@ final class ConditionEngineTest {
         diplomacyService = new DiplomacyService(ownershipResolver);
         engine = new ConditionEngine(oathService, ownershipResolver, economyService,
                 id -> Optional.ofNullable(groups.get(id)), deathTracker, mobKillTracker, manualConfirms,
-                diplomacyService, player -> Optional.ofNullable(banishments.get(player)));
-    }
-
-    private Banishment activeBanishment(PlayerRef player, Instant servingSince, Instant releaseAt) {
-        Banishment banishment = new Banishment(UUID.randomUUID(), player, UUID.randomUUID(), servingSince,
-                releaseAt, new ReturnLocation(UUID.randomUUID(), 0, 64, 0, 0f, 0f), false);
-        banishments.put(player, banishment);
-        return banishment;
+                diplomacyService);
     }
 
     private ProtectionGroup group(PlayerRef owner) {
@@ -104,6 +93,27 @@ final class ConditionEngineTest {
         assertEquals(bob, farm.owner());
         assertTrue(oath.isClauseFulfilled(0));
         assertEquals(OathState.FULFILLED, oath.state());
+    }
+
+    @Test
+    void successfulTransferReportsTheGroupInTransferredGroups() {
+        ProtectionGroup farm = group(alice);
+        Oath oath = activeOathWithClauses(
+                new Clause.TransferClause(bob, new ProtectionGroupRef(farm.id()), new Condition.Immediate()));
+
+        ConditionEngine.TickResult result = engine.tick(List.of(oath), Instant.now());
+
+        assertEquals(List.of(farm), result.transferredGroups());
+    }
+
+    @Test
+    void missingSubjectGroupIsNotReportedInTransferredGroups() {
+        Oath oath = activeOathWithClauses(new Clause.TransferClause(
+                bob, new ProtectionGroupRef(UUID.randomUUID()), new Condition.Immediate()));
+
+        ConditionEngine.TickResult result = engine.tick(List.of(oath), Instant.now());
+
+        assertTrue(result.transferredGroups().isEmpty());
     }
 
     @Test
@@ -429,62 +439,4 @@ final class ConditionEngineTest {
         assertEquals(OathState.ACTIVE, oath.state());
     }
 
-    @Test
-    void fullReleaseBanishmentClauseForgivesTheEntireRemainingSentence() {
-        Instant now = Instant.now();
-        Banishment banishment = activeBanishment(bob, now.minus(Duration.ofHours(1)), now.plus(Duration.ofHours(10)));
-        Oath oath = activeOathWithClauses(
-                new Clause.BanishmentReleaseClause(bob, Duration.ZERO, true, new Condition.Immediate()));
-
-        ConditionEngine.TickResult result = engine.tick(List.of(oath), now);
-
-        assertFalse(banishment.active(now));
-        assertEquals(List.of(banishment), result.changedBanishments());
-        assertTrue(oath.isClauseFulfilled(0));
-        assertEquals(OathState.FULFILLED, oath.state());
-    }
-
-    @Test
-    void partialReleaseBanishmentClauseCutsExactlyTheGivenReduction() {
-        Instant now = Instant.now();
-        Instant releaseAt = now.plus(Duration.ofHours(10));
-        Banishment banishment = activeBanishment(bob, now.minus(Duration.ofHours(1)), releaseAt);
-        Oath oath = activeOathWithClauses(
-                new Clause.BanishmentReleaseClause(bob, Duration.ofHours(4), false, new Condition.Immediate()));
-
-        engine.tick(List.of(oath), now);
-
-        assertEquals(releaseAt.minus(Duration.ofHours(4)), banishment.releaseAt());
-        assertTrue(banishment.active(now));
-        assertEquals(OathState.FULFILLED, oath.state());
-    }
-
-    @Test
-    void banishmentReleaseClauseWaitsOnAManualConfirmFromThePlacer() {
-        Instant now = Instant.now();
-        Banishment banishment = activeBanishment(bob, now.minus(Duration.ofHours(1)), now.plus(Duration.ofHours(10)));
-        Oath oath = activeOathWithClauses(
-                new Clause.BanishmentReleaseClause(bob, Duration.ZERO, true, new Condition.ManualConfirm(alice)));
-
-        engine.tick(List.of(oath), now);
-        assertTrue(banishment.active(now));
-        assertEquals(OathState.ACTIVE, oath.state());
-
-        manualConfirms.confirm(oath.id(), alice);
-        engine.tick(List.of(oath), now);
-
-        assertFalse(banishment.active(now));
-        assertEquals(OathState.FULFILLED, oath.state());
-    }
-
-    @Test
-    void banishmentReleaseClauseWithNoActiveSentenceResolvesAsANoOp() {
-        Oath oath = activeOathWithClauses(
-                new Clause.BanishmentReleaseClause(bob, Duration.ZERO, true, new Condition.Immediate()));
-
-        ConditionEngine.TickResult result = engine.tick(List.of(oath), Instant.now());
-
-        assertTrue(result.changedBanishments().isEmpty());
-        assertEquals(OathState.FULFILLED, oath.state());
-    }
 }

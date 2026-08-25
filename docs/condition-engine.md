@@ -14,7 +14,7 @@ flowchart TD
     ForEachClause -->|already fulfilled| NextClause[Skip]
 
     ForEachClause -->|TransferClause| EvalTransfer{Condition met?}
-    EvalTransfer -->|yes| ExecTransfer[OwnershipResolver.reassignOwner\non the subject group] --> MarkFulfilled
+    EvalTransfer -->|yes| ExecTransfer["OwnershipResolver.reassignOwner\non the subject group - the group is\nalso added to TickResult.transferredGroups()\n(e.g. for a WorldGuard region-owner sync,\nsee worldguard-integration.md)"] --> MarkFulfilled
     EvalTransfer -->|no| NotDone[allAutoResolvableAndDone = false]
 
     ForEachClause -->|EscrowClause| EvalEscrow{Release-schedule condition met?\nAND of every ReleaseStep's condition,\nfires atomically, not incrementally}

@@ -38,7 +38,7 @@ stateDiagram-v2
 - **Every transition is a `LedgerEntry`.** `HonorLedgerListener` reacts to `FULFILLED`/`BROKEN` entries
   to move Honor (see [Honor Scoring](honor.md)); `OathBoardEligibility` reacts to `SEALED`/
   `FULFILLED`/`BROKEN` entries on *witnessed* oaths to decide what posts to an Oath Board (see
-  [Notary & Oath Board](notary-oath-board.md)). `VOIDED` never triggers either - it's treated as a
+  [Named-Party Oath Negotiation & Public Oath Board](notary-oath-board.md)). `VOIDED` never triggers either - it's treated as a
   neutral, mutually-agreed cancellation.
 - **Known limitation:** the domain model has no fault-attribution concept - `BROKEN` just records
   *that* an oath broke, not *whose fault* it was, so Honor loss on breach currently applies to every

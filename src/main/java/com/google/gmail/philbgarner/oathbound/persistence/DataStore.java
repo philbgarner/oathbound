@@ -1,17 +1,12 @@
 package com.google.gmail.philbgarner.oathbound.persistence;
 
-import com.google.gmail.philbgarner.oathbound.altar.Altar;
 import com.google.gmail.philbgarner.oathbound.board.OathBoard;
-import com.google.gmail.philbgarner.oathbound.bounty.Banishment;
-import com.google.gmail.philbgarner.oathbound.bounty.Bounty;
-import com.google.gmail.philbgarner.oathbound.bounty.PveContractProgress;
 import com.google.gmail.philbgarner.oathbound.ceremony.CeremonyTrigger;
 import com.google.gmail.philbgarner.oathbound.contract.TradeOffer;
 import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticRelation;
 import com.google.gmail.philbgarner.oathbound.economy.PlayerBalance;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
 import com.google.gmail.philbgarner.oathbound.honor.PlayerHonor;
-import com.google.gmail.philbgarner.oathbound.notary.Notary;
 import com.google.gmail.philbgarner.oathbound.oath.DeathRecord;
 import com.google.gmail.philbgarner.oathbound.oath.EscrowClaim;
 import com.google.gmail.philbgarner.oathbound.oath.LedgerEntry;
@@ -19,10 +14,10 @@ import com.google.gmail.philbgarner.oathbound.oath.MobKillRecord;
 import com.google.gmail.philbgarner.oathbound.oath.Oath;
 import com.google.gmail.philbgarner.oathbound.protection.Protection;
 import com.google.gmail.philbgarner.oathbound.villager.VillagerNpc;
+import com.google.gmail.philbgarner.oathbound.worldguard.GroupRegionLink;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -68,14 +63,6 @@ public interface DataStore {
 
     List<DiplomaticRelation> loadAllDiplomaticRelations() throws DataStoreException;
 
-    void saveAltar(Altar altar) throws DataStoreException;
-
-    Optional<Altar> loadAltar(UUID id) throws DataStoreException;
-
-    List<Altar> loadAllAltars() throws DataStoreException;
-
-    void deleteAltar(UUID id) throws DataStoreException;
-
     void saveTradeOffer(TradeOffer offer) throws DataStoreException;
 
     Optional<TradeOffer> loadTradeOffer(UUID oathId) throws DataStoreException;
@@ -102,12 +89,6 @@ public interface DataStore {
 
     void deleteProtection(UUID id) throws DataStoreException;
 
-    void saveNotary(Notary notary) throws DataStoreException;
-
-    List<Notary> loadAllNotaries() throws DataStoreException;
-
-    void deleteNotary(UUID id) throws DataStoreException;
-
     void saveOathBoard(OathBoard board) throws DataStoreException;
 
     List<OathBoard> loadAllOathBoards() throws DataStoreException;
@@ -126,25 +107,9 @@ public interface DataStore {
 
     void deleteVillagerNpc(UUID id) throws DataStoreException;
 
-    void saveBounty(Bounty bounty) throws DataStoreException;
+    void saveGroupRegionLink(GroupRegionLink link) throws DataStoreException;
 
-    List<Bounty> loadAllBounties() throws DataStoreException;
+    List<GroupRegionLink> loadAllGroupRegionLinks() throws DataStoreException;
 
-    void deleteBounty(UUID id) throws DataStoreException;
-
-    void savePveContractProgress(PveContractProgress progress) throws DataStoreException;
-
-    List<PveContractProgress> loadAllPveContractProgress() throws DataStoreException;
-
-    void deletePveContractProgress(UUID id) throws DataStoreException;
-
-    void saveBanishment(Banishment banishment) throws DataStoreException;
-
-    List<Banishment> loadAllBanishments() throws DataStoreException;
-
-    void deleteBanishment(UUID id) throws DataStoreException;
-
-    void setBountyNotificationOptOut(UUID playerId, boolean optedOut) throws DataStoreException;
-
-    Set<UUID> loadBountyNotificationOptOuts() throws DataStoreException;
+    void deleteGroupRegionLink(UUID id) throws DataStoreException;
 }

@@ -21,11 +21,13 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-/** Player-facing entry point for installing a villager shop NPC: spawns a rooted, invulnerable Villager
- * at the player's current location, skinned for the given {@link NpcRole}. One instance of this class is
- * registered per role (see {@code OathboundPlugin.onEnable()}), so each role gets its own
- * {@code /oathbound-&lt;role&gt;} command while sharing this single implementation. Mirrors
- * {@link OathboundNotaryCommand} - same install shape, no structure/ritual required. */
+/** Player-facing entry point for installing an anchored villager NPC: spawns a rooted, invulnerable
+ * Villager at the player's current location, skinned for the given {@link NpcRole} - a completely
+ * standard vanilla villager (default trades, default trade GUI) except that it can't wander off or
+ * despawn. One instance of this class is registered per role (see {@code OathboundPlugin.onEnable()}),
+ * so each role gets its own {@code /oathbound-&lt;role&gt;} command while sharing this single
+ * implementation. No structure/ritual required, same as the general design doc's "MVP install command"
+ * posture for NPCs. */
 public final class OathboundVillagerCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS = List.of("install");

@@ -17,10 +17,18 @@ java {
 repositories {
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
+    maven("https://maven.enginehub.org/repo/")
 }
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:26.2.build.112-stable")
+    compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.13") {
+        exclude(group = "com.sk89q.worldguard.worldguard-libs")
+        exclude(group = "com.sk89q.worldedit.worldedit-libs")
+        exclude(group = "it.unimi.dsi", module = "fastutil")
+        exclude(group = "com.google.guava", module = "guava")
+        exclude(group = "com.google.code.gson", module = "gson")
+    }
     implementation("org.xerial:sqlite-jdbc:3.53.2.1")
     implementation("com.google.code.gson:gson:2.14.0")
 

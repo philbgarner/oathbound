@@ -2,7 +2,6 @@ package com.google.gmail.philbgarner.oathbound.persistence.json;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.google.gmail.philbgarner.oathbound.bounty.BountyTarget;
 import com.google.gmail.philbgarner.oathbound.economy.Currency;
 import com.google.gmail.philbgarner.oathbound.group.EntityRef;
 import com.google.gmail.philbgarner.oathbound.group.PlayerRef;
@@ -47,10 +46,6 @@ public final class GsonFactory {
                         "kill_count", Clause.KillCountClause.class,
                         "mob_kill", Clause.MobKillClause.class,
                         "diplomacy", Clause.DiplomacyClause.class
-                )))
-                .registerTypeAdapterFactory(new PolymorphicTypeAdapterFactory<>(BountyTarget.class, Map.of(
-                        "solo", BountyTarget.Solo.class,
-                        "group", BountyTarget.Group.class
                 )))
                 .create();
     }

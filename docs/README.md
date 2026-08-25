@@ -18,14 +18,14 @@ marked "known limitation" or "not implemented" in a diagram's notes is a real, c
 - [Escrow](escrow.md) - deposit-on-add, atomic release-schedule firing, the currency-vs-item split, and
   claim expiry.
 
-## Territory, groups, and access
+## Groups, access, and territory
 
 - [Groups & Ownership](groups-ownership.md) - the `ProtectionGroup` tier hierarchy, live cycle-safe
   ownership-chain resolution, and the membership/role/permission model.
-- [Permissions & Access Gating](permissions-access.md) - chest/door locking and altar build-gating,
-  including claim-overlap resolution.
-- [Altars](altar.md) - consecration and nesting legality, the Power decay curve, the three
-  vulnerability tiers, and the Destroy/Loot desecration outcomes.
+- [Permissions & Access Gating](permissions-access.md) - chest/door locking, Oathbound's only remaining
+  block-level protection mechanic.
+- [WorldGuard Integration](worldguard-integration.md) - the optional sync bridge that keeps a linked
+  WorldGuard region's owners matching a `ProtectionGroup`'s members across ownership changes.
 
 ## Diplomacy and social systems
 
@@ -35,13 +35,8 @@ marked "known limitation" or "not implemented" in a diagram's notes is a real, c
   propose-and-wait handshake.
 - [Honor Scoring](honor.md) - how `FULFILLED`/`BROKEN` move a player's global Honor, severity scaling,
   Blood Oath amplification, and cosmetic title tiers.
-- [Notary Negotiation & Public Oath Board](notary-oath-board.md) - drafting/proposing a named-party
-  oath, and how witnessed activity becomes visible on a board.
-
-## PvP economy
-
-- [Bounty / Kill Contracts & Banishment](bounty-banishment.md) - placement/heat-fee pricing, head-drop
-  fulfillment, banishment sentencing, and the separate PvE contract path.
+- [Named-Party Oath Negotiation & Public Oath Board](notary-oath-board.md) - drafting/proposing a
+  named-party oath, and how witnessed activity becomes visible on a board.
 
 ## Keeping these current
 

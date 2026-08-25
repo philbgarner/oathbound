@@ -1,16 +1,7 @@
 package com.google.gmail.philbgarner.oathbound.persistence.sqlite;
 
-import com.google.gmail.philbgarner.oathbound.altar.Altar;
-import com.google.gmail.philbgarner.oathbound.altar.AltarLocation;
-import com.google.gmail.philbgarner.oathbound.altar.AltarVulnerabilityTier;
 import com.google.gmail.philbgarner.oathbound.board.BoardLocation;
 import com.google.gmail.philbgarner.oathbound.board.OathBoard;
-import com.google.gmail.philbgarner.oathbound.bounty.Banishment;
-import com.google.gmail.philbgarner.oathbound.bounty.Bounty;
-import com.google.gmail.philbgarner.oathbound.bounty.BountyStatus;
-import com.google.gmail.philbgarner.oathbound.bounty.BountyTarget;
-import com.google.gmail.philbgarner.oathbound.bounty.PveContractProgress;
-import com.google.gmail.philbgarner.oathbound.bounty.ReturnLocation;
 import com.google.gmail.philbgarner.oathbound.contract.TradeOffer;
 import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticRelation;
 import com.google.gmail.philbgarner.oathbound.diplomacy.DiplomaticState;
@@ -25,8 +16,6 @@ import com.google.gmail.philbgarner.oathbound.group.ProtectionGroup;
 import com.google.gmail.philbgarner.oathbound.group.ProtectionGroupRef;
 import com.google.gmail.philbgarner.oathbound.group.Role;
 import com.google.gmail.philbgarner.oathbound.honor.PlayerHonor;
-import com.google.gmail.philbgarner.oathbound.notary.Notary;
-import com.google.gmail.philbgarner.oathbound.notary.NotaryLocation;
 import com.google.gmail.philbgarner.oathbound.oath.Clause;
 import com.google.gmail.philbgarner.oathbound.oath.Condition;
 import com.google.gmail.philbgarner.oathbound.oath.DeathRecord;
@@ -303,47 +292,6 @@ final class SqliteDataStoreTest {
     }
 
     @Test
-    void altarRoundTripsAcrossAReopenedConnection(@TempDir Path tempDir) throws DataStoreException {
-        Path dbFile = tempDir.resolve("oathbound.db");
-        PlayerRef owner = new PlayerRef(UUID.randomUUID());
-        AltarLocation location = new AltarLocation(UUID.randomUUID(), 100, 65, -200);
-        Instant consecratedAt = Instant.now().minus(Duration.ofDays(10));
-        Instant sacrificeAt = consecratedAt.plus(Duration.ofDays(1));
-        UUID altarId;
-
-        SqliteDataStore first = new SqliteDataStore(dbFile);
-        first.initialize();
-        try {
-            Altar altar = new Altar(UUID.randomUUID(), owner, location, consecratedAt);
-            altar.applySacrifice(150L, sacrificeAt, Duration.ofMinutes(5), 150L);
-            altar.setLastKnownTier(AltarVulnerabilityTier.DECAYING);
-            altarId = altar.id();
-            first.saveAltar(altar);
-        } finally {
-            first.close();
-        }
-
-        SqliteDataStore second = new SqliteDataStore(dbFile);
-        second.initialize();
-        try {
-            Optional<Altar> loaded = second.loadAltar(altarId);
-            assertTrue(loaded.isPresent());
-            Altar altar = loaded.get();
-            assertEquals(owner, altar.owner());
-            assertEquals(location, altar.location());
-            assertEquals(consecratedAt, altar.consecratedAt());
-            assertEquals(150L, altar.powerBaseline());
-            assertEquals(sacrificeAt, altar.lastSacrificeAt());
-            assertEquals(150L, altar.lastSacrificeValue());
-            assertEquals(sacrificeAt.plus(Duration.ofMinutes(5)), altar.cooldownUntil());
-            assertEquals(AltarVulnerabilityTier.DECAYING, altar.lastKnownTier());
-            assertEquals(1, second.loadAllAltars().size());
-        } finally {
-            second.close();
-        }
-    }
-
-    @Test
     void protectionRoundTripsAndDeletesAcrossAReopenedConnection(@TempDir Path tempDir) throws DataStoreException {
         Path dbFile = tempDir.resolve("oathbound.db");
         UUID groupId = UUID.randomUUID();
@@ -402,41 +350,6 @@ final class SqliteDataStoreTest {
             List<PlayerHonor> updated = second.loadAllHonor();
             assertEquals(1, updated.size());
             assertEquals(30L, updated.get(0).value());
-        } finally {
-            second.close();
-        }
-    }
-
-    @Test
-    void notaryRoundTripsAndDeletesAcrossAReopenedConnection(@TempDir Path tempDir) throws DataStoreException {
-        Path dbFile = tempDir.resolve("oathbound.db");
-        PlayerRef owner = new PlayerRef(UUID.randomUUID());
-        UUID entityId = UUID.randomUUID();
-        NotaryLocation location = new NotaryLocation(UUID.randomUUID(), 5, 70, -5);
-        UUID notaryId;
-
-        SqliteDataStore first = new SqliteDataStore(dbFile);
-        first.initialize();
-        try {
-            Notary notary = new Notary(UUID.randomUUID(), entityId, owner, "The Judge", location, Instant.now());
-            notaryId = notary.id();
-            first.saveNotary(notary);
-        } finally {
-            first.close();
-        }
-
-        SqliteDataStore second = new SqliteDataStore(dbFile);
-        second.initialize();
-        try {
-            List<Notary> loaded = second.loadAllNotaries();
-            assertEquals(1, loaded.size());
-            assertEquals(entityId, loaded.get(0).entityId());
-            assertEquals(owner, loaded.get(0).owner());
-            assertEquals(location, loaded.get(0).location());
-            assertEquals("The Judge", loaded.get(0).name());
-
-            second.deleteNotary(notaryId);
-            assertTrue(second.loadAllNotaries().isEmpty());
         } finally {
             second.close();
         }
@@ -572,83 +485,4 @@ final class SqliteDataStoreTest {
         }
     }
 
-    @Test
-    void bountyBanishmentPveProgressAndOptOutsRoundTripAcrossAReopenedConnection(@TempDir Path tempDir)
-            throws DataStoreException {
-        Path dbFile = tempDir.resolve("oathbound.db");
-        PlayerRef placer = new PlayerRef(UUID.randomUUID());
-        PlayerRef victim = new PlayerRef(UUID.randomUUID());
-        UUID groupId = UUID.randomUUID();
-        Currency coin = new Currency("coin");
-        Instant now = Instant.now();
-
-        UUID bountyId;
-        UUID banishmentId;
-        UUID progressId;
-
-        SqliteDataStore first = new SqliteDataStore(dbFile);
-        first.initialize();
-        try {
-            Bounty bounty = new Bounty(UUID.randomUUID(), placer, new BountyTarget.Group(new ProtectionGroupRef(groupId)),
-                    3, 2, java.util.Map.of(coin, 300L), 25L, now, BountyStatus.ACTIVE);
-            bountyId = bounty.id();
-            first.saveBounty(bounty);
-
-            Banishment banishment = new Banishment(UUID.randomUUID(), victim, bountyId, now, now.plus(Duration.ofHours(5)),
-                    new ReturnLocation(UUID.randomUUID(), 1.5, 64.0, -2.5, 90.0f, 0.0f), false);
-            banishmentId = banishment.id();
-            first.saveBanishment(banishment);
-
-            PveContractProgress progress = new PveContractProgress(UUID.randomUUID(), placer, "spider-cull", 4, now, 1);
-            progressId = progress.id();
-            first.savePveContractProgress(progress);
-
-            first.setBountyNotificationOptOut(placer.playerId(), true);
-        } finally {
-            first.close();
-        }
-
-        SqliteDataStore second = new SqliteDataStore(dbFile);
-        second.initialize();
-        try {
-            List<Bounty> bounties = second.loadAllBounties();
-            assertEquals(1, bounties.size());
-            Bounty loadedBounty = bounties.get(0);
-            assertEquals(bountyId, loadedBounty.id());
-            assertEquals(placer, loadedBounty.placer());
-            assertEquals(new BountyTarget.Group(new ProtectionGroupRef(groupId)), loadedBounty.target());
-            assertEquals(3, loadedBounty.originalQuantity());
-            assertEquals(2, loadedBounty.remainingQuantity());
-            assertEquals(300L, loadedBounty.totalReward().get(coin));
-            assertEquals(25L, loadedBounty.feePaid());
-            assertEquals(BountyStatus.ACTIVE, loadedBounty.status());
-
-            List<Banishment> banishments = second.loadAllBanishments();
-            assertEquals(1, banishments.size());
-            assertEquals(banishmentId, banishments.get(0).id());
-            assertEquals(victim, banishments.get(0).player());
-            assertEquals(bountyId, banishments.get(0).triggeringBountyId());
-            assertFalse(banishments.get(0).released());
-
-            List<PveContractProgress> progressList = second.loadAllPveContractProgress();
-            assertEquals(1, progressList.size());
-            assertEquals(progressId, progressList.get(0).id());
-            assertEquals(4, progressList.get(0).killsSoFar());
-            assertEquals(1, progressList.get(0).timesCompleted());
-
-            Set<UUID> optOuts = second.loadBountyNotificationOptOuts();
-            assertEquals(Set.of(placer.playerId()), optOuts);
-
-            second.deleteBounty(bountyId);
-            second.deleteBanishment(banishmentId);
-            second.deletePveContractProgress(progressId);
-            second.setBountyNotificationOptOut(placer.playerId(), false);
-            assertTrue(second.loadAllBounties().isEmpty());
-            assertTrue(second.loadAllBanishments().isEmpty());
-            assertTrue(second.loadAllPveContractProgress().isEmpty());
-            assertTrue(second.loadBountyNotificationOptOuts().isEmpty());
-        } finally {
-            second.close();
-        }
-    }
 }
